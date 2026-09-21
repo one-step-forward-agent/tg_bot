@@ -1,6 +1,7 @@
 from urllib.parse import quote
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
 
 
 class Settings(BaseSettings):
@@ -24,11 +25,18 @@ class Settings(BaseSettings):
     @property
     def database_url(self) -> str:
         if self.DATABASE_URL:
-            url = self.DATABASE_URL
+            url = self.DATABASE_URL.strip().strip("\"'")
             if url.startswith("postgres://"):
-                return url.replace("postgres://", "postgresql+asyncpg://", 1)
-            if url.startswith("postgresql://"):
-                return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+                url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+            elif url.startswith("postgresql://"):
+                url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+            try:
+                make_url(url)
+            except Exception as error:
+                raise ValueError(
+                    "DATABASE_URL must be a valid PostgreSQL connection URL"
+                ) from error
             return url
 
         return (
