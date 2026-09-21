@@ -3,7 +3,7 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from bot.config import settings
 
-engine = create_async_engine(settings.DATABASE_URL, pool_pre_ping=True)
+engine = create_async_engine(settings.database_url, pool_pre_ping=True)
 
 async_session_maker = sessionmaker(
     engine,

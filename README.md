@@ -21,7 +21,7 @@ Telegram-бот для создания событий и напоминаний
 ```env
 TOKEN=your_telegram_bot_token
 
-POSTGRES_HOST=db
+POSTGRES_HOST=agent_db
 POSTGRES_PORT=5432
 POSTGRES_USER=postgres
 POSTGRES_DB=calendar_bot
@@ -36,4 +36,27 @@ TIMEZONE=Europe/Moscow
 ```cmd
 docker compose up --build
 ```
+
+## Развертывание в Amvera
+
+Amvera не поддерживает `docker-compose.yml`, поэтому приложение и PostgreSQL
+разворачиваются как два отдельных проекта:
+
+1. Создайте managed-кластер PostgreSQL в Amvera и дождитесь статуса запуска.
+2. Создайте приложение из этого репозитория. Amvera автоматически использует
+   `Dockerfile` из корня проекта.
+3. В настройках приложения добавьте переменные окружения. Секретами должны быть
+   `TOKEN`, `DATABASE_URL`, `GIGACHAT_CREDENTIALS` или `SBER_AUTHORIZATION_KEY`.
+4. Для `DATABASE_URL` укажите строку подключения к PostgreSQL с внутренним именем
+   хоста кластера Amvera. Поддерживаются также отдельные переменные
+   `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_DB` и
+   `POSTGRES_PASSWORD`.
+5. Свяжите приложение с PostgreSQL по внутреннему имени хоста вида
+   `amvera-<username>-cnpg-<project_name>-rw` и перезапустите приложение.
+
+При запуске контейнер сначала выполняет `alembic upgrade head`, затем запускает
+Telegram polling. У проекта должно быть ровно одно запущенное приложение, иначе
+Telegram завершит один из экземпляров polling с ошибкой `getUpdates`.
+
+После создания PostgreSQL включите резервное копирование в его настройках.
 
