@@ -1,153 +1,262 @@
 import html
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
-
-START_MESSAGE = (
-    "Привет! 👋 Я помогу добавить планы в календарь.\n\n"
-    "Я умею:\n"
-    "• 📝 разбирать обычный текст;\n"
-    "• 📄 читать PDF и DOCX;\n"
-    "• 🎙️ распознавать голосовые и аудиосообщения.\n\n"
-    "Отправьте описание планов — я найду события и подготовлю файл .ics 📅"
+MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"]
+WEEKDAYS_SHORT = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"]
+LEAD_PRESETS = (5, 15, 30, 60, 1440)
+MESSAGE_LIMIT = 3800
+EXAMPLES = (
+    "Завтра в 15:00 созвон с Олей, напомни за 10 минут",
+    "Каждый понедельник в 19:00 спортзал",
+    "Что у меня в пятницу?",
 )
 
 
-def welcome_back(name: str) -> str:
-    return f"С возвращением, {html.escape(name)}! 😊\n\n{START_MESSAGE}"
+def esc(value) -> str:
+    return html.escape(str(value or ""))
 
 
-def registration_name_prompt() -> str:
-    return "Как вас зовут? Напишите имя, которое использовать в боте 🙂"
+def plural(count: int, one: str, few: str, many: str) -> str:
+    tail = count % 100
+    if 11 <= tail <= 14:
+        return many
+    if count % 10 == 1:
+        return one
+    if 2 <= count % 10 <= 4:
+        return few
+    return many
 
 
-def invalid_name() -> str:
-    return "Напишите имя от 1 до 100 символов, пожалуйста."
+def format_lead(minutes: int) -> str:
+    if minutes == 0:
+        return "в начале"
+    if minutes % 1440 == 0:
+        return f"{minutes // 1440} дн"
+    if minutes % 60 == 0:
+        return f"{minutes // 60} ч"
+    return f"{minutes} мин"
 
 
-def timezone_prompt() -> str:
-    return "Выберите ваш часовой пояс 🕰️"
+def short_date(day: date) -> str:
+    return f"{WEEKDAYS_SHORT[day.weekday()]}, {day.day} {MONTHS[day.month - 1]}"
 
 
-def timezone_saved(name: str) -> str:
+def day_text(day: date, today: date) -> str:
+    if day == today:
+        return f"Сегодня, {day.day} {MONTHS[day.month - 1]}"
+    if day == today + timedelta(days=1):
+        return f"Завтра, {day.day} {MONTHS[day.month - 1]}"
+    base = short_date(day)
+    return base[0].upper() + base[1:]
+
+
+def priority_mark(event: dict) -> str:
+    return {"urgent": "‼️ ", "high": "❗ "}.get(event.get("priority") or "", "")
+
+
+def event_card(event: dict) -> str:
+    start = datetime.fromisoformat(event["start"])
+    end = datetime.fromisoformat(event["end"])
+    today = datetime.now(start.tzinfo).date()
+    if event.get("all_day"):
+        when = "весь день"
+    elif start.date() == end.date():
+        when = f"{start:%H:%M}–{end:%H:%M}"
+    else:
+        when = f"{start:%H:%M} — {day_text(end.date(), today).lower()} {end:%H:%M}"
+    lines = [f"📌 {priority_mark(event)}<b>{esc(event['title'])}</b>", f"🗓 {day_text(start.date(), today)} · {when}"]
+    if event.get("location"):
+        lines.append(f"📍 {esc(event['location'])}")
+    reminder = event.get("reminder_minutes")
+    if reminder is not None:
+        lines.append("🔔 В момент начала" if reminder == 0 else f"🔔 За {format_lead(reminder)}")
+    repeats = event.get("repeats") or 0
+    if repeats:
+        lines.append(f"🔁 И ещё {repeats} {plural(repeats, 'повтор', 'повтора', 'повторов')} на ближайшие недели")
+    return "\n".join(lines)
+
+
+def created(reply: dict) -> str:
+    events = reply["events"]
+    if len(events) == 1:
+        header = "✨ <b>Добавила в календарь</b>"
+    else:
+        header = f"✨ <b>Добавила {len(events)} {plural(len(events), 'событие', 'события', 'событий')}</b>"
+    parts = [header, *[event_card(event) for event in events]]
+    if reply.get("answer"):
+        parts.append(f"💬 {esc(reply['answer'])}")
+    return "\n\n".join(parts)
+
+
+def agenda_line(event: dict) -> str:
+    start = datetime.fromisoformat(event["start"])
+    time_text = "весь день" if event.get("all_day") else f"{start:%H:%M}"
+    line = f"<code>{time_text}</code>  {priority_mark(event)}{esc(event['title'])}"
+    if event.get("location"):
+        line += f"  <i>· {esc(event['location'])}</i>"
+    return line
+
+
+def agenda(reply: dict) -> str:
+    days = reply.get("days") or []
+    title = reply.get("title") or "План"
+    count = sum(len(day["events"]) for day in days)
+    if reply.get("date") and reply.get("scope") != "week":
+        first = date.fromisoformat(reply["date"])
+        if title in ("Сегодня", "Завтра", "Вчера"):
+            header = f"📅 <b>{esc(title)}</b> · {short_date(first)}"
+        else:
+            header = f"📅 <b>{esc(day_text(first, first - timedelta(days=7)))}</b>"
+        if not count:
+            return f"{header}\n\nСвободный день — ничего не запланировано 🌿"
+        body = "\n".join(agenda_line(event) for event in days[0]["events"])
+        return f"{header}\n\n{body}"
+    icon = "🔎" if title == "Найденные события" else "📆" if reply.get("scope") == "week" else "📅"
+    if not count:
+        return f"{icon} <b>{esc(title)}</b>\n\nНичего не нашла — в календаре пусто 🌿"
+    lines = [f"{icon} <b>{esc(title)}</b> · {count} {plural(count, 'событие', 'события', 'событий')}"]
+    shown = 0
+    for day in days:
+        block = [f"\n<b>{esc(day['label'])}</b>", *[agenda_line(event) for event in day["events"]]]
+        if len("\n".join(lines + block)) > MESSAGE_LIMIT:
+            rest = count - shown
+            lines.append(f"\n<i>…и ещё {rest} {plural(rest, 'событие', 'события', 'событий')} — откройте календарь в Dayla.</i>")
+            break
+        lines.extend(block)
+        shown += len(day["events"])
+    return "\n".join(lines)
+
+
+def answer(text: str) -> str:
+    return f"💬 {esc(text)}"
+
+
+def nothing() -> str:
     return (
-        f"Готово, {html.escape(name)}! ✅ Теперь события будут сохраняться в вашем часовом поясе.\n\n"
-        f"{START_MESSAGE}"
+        "🤔 <b>Не нашла в сообщении событий с датой</b>\n\n"
+        "Попробуйте написать, что и когда, например:\n"
+        f"<i>«{EXAMPLES[0]}»</i>"
     )
 
 
-def unknown_timezone() -> str:
-    return "Неизвестный часовой пояс"
+def undone(count: int) -> str:
+    if not count:
+        return "↩️ Эти события уже удалены или изменены в Dayla."
+    return f"↩️ <b>Отменено</b> — {count} {plural(count, 'событие удалено', 'события удалены', 'событий удалено')} из календаря."
 
 
-def timezone_saved_callback() -> str:
-    return "Сохранено ✅"
+def heard(text: str) -> str:
+    return f"🎙 <i>«{esc(text)}»</i>"
 
 
-def usage() -> str:
+def reading_document(name: str) -> str:
+    return f"📄 Читаю <b>{esc(name)}</b>…"
+
+
+def welcome_unlinked(has_link_button: bool) -> str:
+    how = (
+        "Нажмите кнопку ниже, войдите и выберите <b>Настройки → Telegram → Подключить</b>."
+        if has_link_button
+        else "Откройте сайт Dayla → <b>Настройки → Telegram</b> и нажмите <b>«Подключить Telegram»</b>."
+    )
     return (
-        "Отправьте текст, PDF, DOCX или голосовое сообщение с описанием планов. "
-        "Я найду события и верну календарный файл .ics 📅"
+        "👋 <b>Привет! Я Dayla</b> — ассистент, который планирует ваш день.\n\n"
+        "После подключения аккаунта здесь можно:\n"
+        "💬 планировать обычными словами, голосом или документом\n"
+        "📅 смотреть план на день и неделю\n"
+        "🔔 получать напоминания и утренний план\n\n"
+        f"<b>Как подключить</b>\n{how}"
     )
 
 
-def supported_files() -> str:
+def linked(profile: dict) -> str:
+    name = f", {esc(profile['name'])}" if profile.get("name") else ""
     return (
-        "Поддерживаются:\n"
-        "• 📝 текстовые сообщения;\n"
-        "• 📄 PDF и DOCX;\n"
-        "• 🎙️ голосовые сообщения и аудиофайлы."
+        f"✅ <b>Готово{name}!</b>\n"
+        f"Telegram подключён к аккаунту <b>{esc(profile['email'])}</b>.\n\n"
+        "Теперь просто пишите мне — например:\n"
+        + "\n".join(f"<i>«{example}»</i>" for example in EXAMPLES)
+        + "\n\n🎙 Голосовые, 📄 PDF и DOCX тоже понимаю. Все события сразу появляются в Dayla."
     )
 
 
-def saved_event(event) -> str:
-    result = f"<b>📌 {html.escape(event.title)}</b>\n{event.starts_at:%d.%m.%Y в %H:%M}"
-    if event.location:
-        result += f"\n📍 {html.escape(event.location)}"
-    if event.description:
-        result += f"\n📝 {html.escape(event.description)}"
-    if event.recurrence_rule:
-        result += "\n🔁 Повторяющееся событие"
-    return result
+def welcome_back(profile: dict) -> str:
+    name = f", {esc(profile['name'])}" if profile.get("name") else ""
+    return f"👋 <b>С возвращением{name}!</b>\n\nНапишите, что запланировать, или выберите действие в меню ниже."
 
 
-def event(item: dict) -> str:
-    starts_at = datetime.fromisoformat(item["starts_at"])
-    result = f"<b>📌 {html.escape(item['title'])}</b>\n🗓️ {starts_at:%d.%m.%Y в %H:%M}"
-    if item.get("ends_at"):
-        ends_at = datetime.fromisoformat(item["ends_at"])
-        result += f"–{ends_at:%H:%M}"
-    if item.get("location"):
-        result += f"\n📍 {html.escape(item['location'])}"
-    if item.get("description"):
-        result += f"\n📝 {html.escape(item['description'])}"
-    if item.get("recurrence_rule"):
-        result += "\n🔁 Повторяющееся событие"
-    if item.get("reminder_minutes") is not None:
-        result += f"\n🔔 Напоминание: за {item['reminder_minutes']} мин."
-    return result
+def help_text() -> str:
+    return (
+        "💡 <b>Что я умею</b>\n\n"
+        "<b>Планировать</b> — пишите как другу:\n"
+        f"<i>«{EXAMPLES[0]}»</i>\n"
+        f"<i>«{EXAMPLES[1]}»</i>\n\n"
+        "<b>Отвечать на вопросы о планах</b>:\n"
+        f"<i>«{EXAMPLES[2]}»</i>  ·  <i>«Когда у меня стоматолог?»</i>\n\n"
+        "<b>Понимать голос и документы</b> — пришлите голосовое, PDF или DOCX.\n\n"
+        "<b>Команды</b>\n"
+        "/today — план на сегодня\n"
+        "/tomorrow — план на завтра\n"
+        "/week — ближайшие 7 дней\n"
+        "/reminders — настройки напоминаний\n"
+        "/unlink — отключить Telegram"
+    )
 
 
-def created_events(items: list[dict]) -> str:
-    count = len(items)
-    noun = "событие" if count == 1 else "события" if count < 5 else "событий"
-    return f"Готово! Добавил {count} {noun} ✅\n\n" + "\n\n".join(event(item) for item in items)
+def link_failed() -> str:
+    return "⚠️ <b>Ссылка недействительна или устарела</b>\n\nПолучите новую в Dayla: <b>Настройки → Telegram → Подключить</b>."
 
 
-def calendar_caption() -> str:
-    return "Ваш календарный файл готов 📅"
+def backend_unavailable() -> str:
+    return "⏳ Сервер Dayla сейчас недоступен. Попробуйте через минуту."
 
 
-def no_events_with_date() -> str:
-    return "В тексте не найдено событий с датой или временем 🧐"
+def assistant_unavailable() -> str:
+    return "⏳ Ассистент сейчас недоступен. Попробуйте чуть позже — или используйте /today и /week."
 
 
-def no_search_results() -> str:
-    return "На эту дату подходящих событий не найдено 🔎"
-
-
-def registration_required() -> str:
-    return "Сначала выполните регистрацию через команду /start 🙂"
-
-
-def processing_text() -> str:
-    return "Обрабатываю текст... ⏳"
-
-
-def processing_error() -> str:
-    return "Не удалось обработать текст. Проверьте настройки GigaChat."
+def account_unlinked() -> str:
+    return "👋 <b>Telegram отключён от Dayla.</b>\n\nНапоминания больше не придут. Подключить снова можно в настройках на сайте."
 
 
 def unsupported_file() -> str:
-    return "Отправьте файл в формате PDF или DOCX, пожалуйста 📄"
+    return "📄 Я читаю только <b>PDF</b> и <b>DOCX</b>. Пришлите документ в одном из этих форматов."
 
 
-def extracting_document() -> str:
-    return "Преобразую документ в текст... 📄"
+def file_too_big() -> str:
+    return "📄 Файл больше 20 МБ — Telegram не даёт ботам скачивать такие файлы."
 
 
-def searching_document() -> str:
-    return "Ищу события в тексте документа... 🔎"
+def document_empty() -> str:
+    return "📄 В документе не нашлось текста. Если это скан, пришлите текстовую версию."
 
 
-def document_error() -> str:
-    return "Не удалось прочитать документ или обработать его через GigaChat."
+def voice_failed(reason: str) -> str:
+    return f"🎙 {esc(reason)}"
 
 
-def recognizing_audio() -> str:
-    return "Распознаю речь и ищу события... 🎙️"
+def unsupported_message() -> str:
+    return "🙂 Я понимаю текст, голосовые и документы PDF или DOCX. Напишите, что запланировать, — или нажмите 💡 Помощь."
 
 
-def recognition_error(error: Exception) -> str:
-    return f"Не удалось распознать речь: {error}"
+def processing_error() -> str:
+    return "😕 Что-то пошло не так. Попробуйте ещё раз чуть позже."
 
 
-def audio_service_error(error: Exception) -> str:
-    return str(error)
+def snoozed(minutes: int) -> str:
+    return f"⏰ Напомню через {format_lead(minutes)}"
 
 
-def audio_error() -> str:
-    return "Не удалось распознать аудио или обработать его через GigaChat."
-
-
-def no_understood_event() -> str:
-    return "Не нашел события и не смог понять вопрос 🤔"
+def reminder_settings(email: str, values: dict) -> str:
+    leads = ", ".join(f"за {format_lead(minutes)}" for minutes in sorted(values["lead_times"])) or "не выбрано"
+    digest = f"в {values['daily_digest_time'][:5]}" if values["daily_digest_enabled"] else "выключен"
+    quiet = f"{values['quiet_hours_start'][:5]}–{values['quiet_hours_end'][:5]}" if values["quiet_hours_enabled"] else "выключены"
+    return (
+        "🔔 <b>Напоминания</b>\n"
+        f"<i>{esc(email)}</i>\n\n"
+        f"Статус: {'<b>включены</b> ✅' if values['enabled'] else '<b>выключены</b> ⏸'}\n"
+        f"Когда: {leads}\n"
+        f"Утренний план: {digest}\n"
+        f"Тихие часы: {quiet}\n\n"
+        "Нажмите кнопку, чтобы изменить."
+    )

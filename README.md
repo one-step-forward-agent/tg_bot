@@ -21,19 +21,23 @@ Telegram-бот для создания событий и напоминаний
 ```env
 TOKEN=your_telegram_bot_token
 
-POSTGRES_HOST=db
-POSTGRES_PORT=5432
-POSTGRES_USER=postgres
-POSTGRES_DB=calendar_bot
-POSTGRES_PASSWORD=your_password
+DATABASE_URL 
+GIGACHAT_CREDENTIALS
+GIGACHAT_MODEL
+GIGACHAT_SCOPE
 
-GIGACHAT_CREDENTIALS=base64(client_id:client_secret)
-GIGACHAT_MODEL=GigaChat
-GIGACHAT_SCOPE=GIGACHAT_API_PERS
-TIMEZONE=Europe/Moscow
+# Focus Day backend (account linking + reminders from the web app)
+BACKEND_URL=http://127.0.0.1:8000
+BOT_API_TOKEN=the same value as in backend/.env
+NOTIFICATION_POLL_SECONDS=20
 ```
 
-```cmd
-docker compose up --build
-```
+## Связка с Focus Day
+
+- `/start <код>` — привязать Telegram к аккаунту Focus Day (ссылку с кодом выдаёт сайт);
+- `/reminders` — показать и переключить настройки напоминаний (вкл/выкл, за сколько минут, сводка на день);
+- `/unlink` — отвязать аккаунт.
+
+Если `BACKEND_URL` и `BOT_API_TOKEN` заданы, бот раз в `NOTIFICATION_POLL_SECONDS` забирает уведомления из backend и отправляет их.
+
 
