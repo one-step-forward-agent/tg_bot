@@ -31,7 +31,8 @@ def format_lead(minutes: int) -> str:
     if minutes == 0:
         return "в начале"
     if minutes % 1440 == 0:
-        return f"{minutes // 1440} дн"
+        days = minutes // 1440
+        return f"{days} {plural(days, 'день', 'дня', 'дней')}"
     if minutes % 60 == 0:
         return f"{minutes // 60} ч"
     return f"{minutes} мин"
