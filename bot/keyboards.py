@@ -7,12 +7,15 @@ MENU_TOMORROW = "🗓 Завтра"
 MENU_WEEK = "📆 Неделя"
 MENU_REMINDERS = "🔔 Напоминания"
 MENU_HELP = "💡 Помощь"
+MENU_DONE = "✅ Выполнено"
+MENU_STATS = "📊 Статистика"
 SCOPES = {"today": "Сегодня", "tomorrow": "Завтра", "week": "Неделя"}
 CALLBACK_LIMIT = 64
 
 main_menu = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text=MENU_TODAY), KeyboardButton(text=MENU_TOMORROW), KeyboardButton(text=MENU_WEEK)],
+        [KeyboardButton(text=MENU_DONE), KeyboardButton(text=MENU_STATS)],
         [KeyboardButton(text=MENU_REMINDERS), KeyboardButton(text=MENU_HELP)],
     ],
     resize_keyboard=True,
@@ -73,18 +76,22 @@ def created_keyboard(event_ids: list[int], events: list[dict], app_url: str | No
 
 def agenda_keyboard(current: str | None, app_url: str | None) -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton(text=f"• {label} •" if scope == current else label, callback_data=f"ag:{scope}") for scope, label in SCOPES.items()]]
+    if current in SCOPES:
+        rows.append([InlineKeyboardButton(text="✅ Отметить выполненные", callback_data=f"dn:{current}")])
     url = public_url(app_url)
     if url:
         rows.append([InlineKeyboardButton(text="↗️ Календарь в Dayla", url=f"{url}/app/calendar")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def reminder_keyboard(notification_id: int, url: str | None) -> InlineKeyboardMarkup:
+def reminder_keyboard(notification_id: int, url: str | None, event_id: int | None = None) -> InlineKeyboardMarkup:
     row = [
         InlineKeyboardButton(text="⏰ +10 мин", callback_data=f"sn:{notification_id}:10"),
         InlineKeyboardButton(text="⏰ +1 час", callback_data=f"sn:{notification_id}:60"),
     ]
     rows = [row]
+    if event_id:
+        rows.append([InlineKeyboardButton(text="✅ Выполнено", callback_data=f"rd:{event_id}")])
     if public_url(url):
         rows.append([InlineKeyboardButton(text="↗️ Открыть событие", url=url)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -113,3 +120,61 @@ def settings_keyboard(values: dict, app_url: str | None) -> InlineKeyboardMarkup
     if url:
         rows.append([InlineKeyboardButton(text="⚙️ Все настройки в Dayla", url=f"{url}/app/settings#reminders")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def proposal_keyboard(draft_id: int, count: int) -> InlineKeyboardMarkup:
+    rows = [[
+        InlineKeyboardButton(text="✅ Добавить" if count == 1 else f"✅ Добавить все ({count})", callback_data=f"dr:{draft_id}:ok"),
+        InlineKeyboardButton(text="✖️ Отмена", callback_data=f"dr:{draft_id}:no"),
+    ]]
+    if count == 1:
+        rows.append(edit_row(draft_id, 0))
+    else:
+        numbers = [InlineKeyboardButton(text=f"✏️ {index + 1}", callback_data=f"dr:{draft_id}:sel:{index}") for index in range(min(count, 20))]
+        rows += [numbers[start : start + 5] for start in range(0, len(numbers), 5)]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def edit_row(draft_id: int, index: int) -> list[InlineKeyboardButton]:
+    return [
+        InlineKeyboardButton(text="✏️ Название", callback_data=f"dr:{draft_id}:e:{index}:title"),
+        InlineKeyboardButton(text="📅 Дата", callback_data=f"dr:{draft_id}:e:{index}:date"),
+        InlineKeyboardButton(text="🕒 Время", callback_data=f"dr:{draft_id}:e:{index}:time"),
+    ]
+
+
+def proposal_item_keyboard(draft_id: int, index: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            edit_row(draft_id, index),
+            [
+                InlineKeyboardButton(text="🗑 Убрать из списка", callback_data=f"dr:{draft_id}:rm:{index}"),
+                InlineKeyboardButton(text="← Назад", callback_data=f"dr:{draft_id}:back"),
+            ],
+        ]
+    )
+
+
+def done_keyboard(reply: dict, scope: str) -> InlineKeyboardMarkup:
+    rows = []
+    for day in reply.get("days") or []:
+        for event in day["events"]:
+            if len(rows) >= 30:
+                break
+            when = "без времени" if event.get("all_day") else event["start"][11:16]
+            if scope == "week":
+                when = f"{event['start'][8:10]}.{event['start'][5:7]} {when}"
+            mark = "✅" if event.get("completed") else "⬜"
+            label = f"{mark} {when} · {event['title']}"
+            rows.append([InlineKeyboardButton(text=label[:60], callback_data=f"dt:{event['id']}:{scope}:{0 if event.get('completed') else 1}")])
+    rows.append([InlineKeyboardButton(text="← К плану", callback_data=f"ag:{scope}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def checkin_keyboard(notification_id: int, payload: dict | None) -> InlineKeyboardMarkup:
+    payload = payload or {}
+    first = []
+    if payload.get("event_ids"):
+        first.append(InlineKeyboardButton(text=f"↪️ Перенести на {payload.get('target_label') or 'другой день'}", callback_data=f"ci:{notification_id}:move"))
+    first.append(InlineKeyboardButton(text="👍 Успеваю", callback_data=f"ci:{notification_id}:ok"))
+    return InlineKeyboardMarkup(inline_keyboard=[first, [InlineKeyboardButton(text="✅ Отметить выполненные", callback_data="dn:today")]])

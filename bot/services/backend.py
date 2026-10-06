@@ -62,6 +62,30 @@ class DaylaBackend:
     async def undo(self, chat_id: int, event_ids: list[int]) -> int:
         return (await self._request("POST", f"/internal/bot/chat/{chat_id}/undo", {"event_ids": event_ids}))["deleted"]
 
+    async def draft(self, chat_id: int, draft_id: int) -> dict:
+        return await self._request("GET", f"/internal/bot/chat/{chat_id}/drafts/{draft_id}")
+
+    async def draft_edit(self, chat_id: int, draft_id: int, index: int, field: str) -> dict:
+        return await self._request("POST", f"/internal/bot/chat/{chat_id}/drafts/{draft_id}/edit", {"index": index, "field": field})
+
+    async def draft_remove(self, chat_id: int, draft_id: int, index: int) -> dict:
+        return await self._request("POST", f"/internal/bot/chat/{chat_id}/drafts/{draft_id}/remove", {"index": index})
+
+    async def draft_confirm(self, chat_id: int, draft_id: int) -> dict:
+        return await self._request("POST", f"/internal/bot/chat/{chat_id}/drafts/{draft_id}/confirm", timeout=ASSISTANT_TIMEOUT)
+
+    async def draft_cancel(self, chat_id: int, draft_id: int) -> dict:
+        return await self._request("POST", f"/internal/bot/chat/{chat_id}/drafts/{draft_id}/cancel")
+
+    async def complete(self, chat_id: int, event_id: int, completed: bool = True) -> dict:
+        return await self._request("POST", f"/internal/bot/chat/{chat_id}/events/{event_id}/complete", {"completed": completed})
+
+    async def stats(self, chat_id: int) -> dict:
+        return await self._request("GET", f"/internal/bot/chat/{chat_id}/stats")
+
+    async def checkin(self, notification_id: int, chat_id: int, action: str) -> dict:
+        return await self._request("POST", f"/internal/bot/notifications/{notification_id}/checkin", {"chat_id": chat_id, "action": action})
+
     async def reminder_settings(self, chat_id: int) -> dict:
         return await self._request("GET", f"/internal/bot/users/{chat_id}/reminder-settings")
 

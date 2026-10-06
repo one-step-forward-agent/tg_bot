@@ -6,11 +6,11 @@ import tempfile
 from aiogram import Bot, F, Router
 from aiogram.enums import ChatType, ContentType
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, ForceReply, Message
 from aiogram.utils.chat_action import ChatActionSender
 
 from bot.handlers.account import report
-from bot.keyboards import agenda_keyboard, created_keyboard, expand_ids
+from bot.keyboards import agenda_keyboard, created_keyboard, expand_ids, proposal_item_keyboard, proposal_keyboard
 from bot.services import site
 from bot.services.backend import BackendError, backend
 from bot.services.speech import recognize_audio
@@ -28,11 +28,17 @@ DOCUMENT_TYPES = (".pdf", ".docx")
 async def deliver(message: Message, reply: dict) -> None:
     app_url = await site.app_url()
     kind = reply.get("kind")
-    if kind == "created":
+    if kind == "proposal":
+        await message.answer(messages.proposal(reply), reply_markup=proposal_keyboard(reply["draft_id"], len(reply["events"])))
+    elif kind == "created":
         await message.answer(messages.created(reply), reply_markup=created_keyboard(reply.get("event_ids") or [], reply["events"], app_url))
     elif kind == "agenda":
         await message.answer(messages.agenda(reply), reply_markup=agenda_keyboard(reply.get("scope"), app_url))
     elif kind == "answer":
+        await message.answer(messages.answer(reply["text"]))
+    elif kind == "not_found":
+        await message.answer(messages.not_found(reply["text"]))
+    elif kind in ("edit_error", "cancelled"):
         await message.answer(messages.answer(reply["text"]))
     else:
         await message.answer(messages.nothing())
@@ -150,3 +156,69 @@ async def undo(callback: CallbackQuery) -> None:
     except TelegramBadRequest:
         await callback.message.edit_reply_markup(reply_markup=None)
     await callback.answer("Отменено" if deleted else "Уже удалено")
+
+
+async def _show_proposal(callback: CallbackQuery, reply: dict) -> None:
+    if reply.get("kind") == "proposal":
+        text, keyboard = messages.proposal(reply), proposal_keyboard(reply["draft_id"], len(reply["events"]))
+    else:
+        text, keyboard = messages.proposal_closed(reply.get("text") or "Черновик закрыт"), None
+    try:
+        await callback.message.edit_text(text, reply_markup=keyboard)
+    except TelegramBadRequest:
+        pass
+
+
+@router.callback_query(F.data.startswith("dr:"))
+async def draft_action(callback: CallbackQuery) -> None:
+    """Buttons under a proposal: add, cancel, choose a task, edit a field or remove a task."""
+    if not isinstance(callback.message, Message):
+        await callback.answer("Это сообщение устарело — отправьте задачу ещё раз", show_alert=True)
+        return
+    chat_id = callback.message.chat.id
+    parts = callback.data.split(":")
+    try:
+        draft_id, action = int(parts[1]), parts[2]
+        if action == "ok":
+            reply = await backend.draft_confirm(chat_id, draft_id)
+            app_url = await site.app_url()
+            keyboard = created_keyboard(reply.get("event_ids") or [], reply["events"], app_url)
+            try:
+                await callback.message.edit_text(messages.created(reply), reply_markup=keyboard)
+            except TelegramBadRequest:
+                await callback.message.answer(messages.created(reply), reply_markup=keyboard)
+            await callback.answer("Добавлено ✓")
+        elif action == "no":
+            await _show_proposal(callback, await backend.draft_cancel(chat_id, draft_id))
+            await callback.answer("Отменено")
+        elif action == "sel":
+            index = int(parts[3])
+            await callback.message.edit_reply_markup(reply_markup=proposal_item_keyboard(draft_id, index))
+            await callback.answer(f"Задача {index + 1}: что изменить?")
+        elif action == "back":
+            await _show_proposal(callback, await backend.draft(chat_id, draft_id))
+            await callback.answer()
+        elif action == "e":
+            data = await backend.draft_edit(chat_id, draft_id, int(parts[3]), parts[4])
+            try:
+                await callback.message.edit_reply_markup(reply_markup=None)
+            except TelegramBadRequest:
+                pass
+            await callback.message.answer(messages.edit_prompt(data), reply_markup=ForceReply(input_field_placeholder=data["prompt"][:64]))
+            await callback.answer()
+        elif action == "rm":
+            await _show_proposal(callback, await backend.draft_remove(chat_id, draft_id, int(parts[3])))
+            await callback.answer("Убрано")
+        else:
+            await callback.answer()
+    except (IndexError, ValueError):
+        await callback.answer()
+    except BackendError as error:
+        if error.status == 410:
+            try:
+                await callback.message.edit_reply_markup(reply_markup=None)
+            except TelegramBadRequest:
+                pass
+            await callback.answer("Этот черновик уже обработан", show_alert=True)
+        else:
+            await callback.answer("Telegram не подключён к Dayla" if error.not_linked else messages.backend_unavailable(), show_alert=True)

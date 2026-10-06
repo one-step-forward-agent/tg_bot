@@ -6,7 +6,7 @@ from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, Teleg
 from aiogram.types import CallbackQuery, Message
 
 from bot.config import settings
-from bot.keyboards import digest_keyboard, reminder_keyboard
+from bot.keyboards import checkin_keyboard, digest_keyboard, reminder_keyboard
 from bot.services.backend import BackendError, backend
 from bot.templates import messages
 
@@ -16,9 +16,11 @@ logger = logging.getLogger(__name__)
 
 def keyboard_for(item: dict):
     if item.get("kind") == "reminder":
-        return reminder_keyboard(item["id"], item.get("url"))
+        return reminder_keyboard(item["id"], item.get("url"), item.get("event_id"))
     if item.get("kind") == "digest":
         return digest_keyboard()
+    if item.get("kind") == "checkin":
+        return checkin_keyboard(item["id"], item.get("payload"))
     return None
 
 
@@ -68,3 +70,38 @@ async def snooze(callback: CallbackQuery) -> None:
     except TelegramBadRequest:
         await callback.message.edit_reply_markup(reply_markup=None)
     await callback.answer(messages.snoozed(int(minutes)))
+
+
+@router.callback_query(F.data.startswith("rd:"))
+async def reminder_done(callback: CallbackQuery) -> None:
+    if not isinstance(callback.message, Message):
+        await callback.answer("Это сообщение устарело", show_alert=True)
+        return
+    try:
+        await backend.complete(callback.message.chat.id, int(callback.data.split(":")[1]))
+    except (ValueError, BackendError):
+        await callback.answer("Не получилось отметить задачу", show_alert=True)
+        return
+    try:
+        await callback.message.edit_text(f"{callback.message.html_text}\n\n✅ <i>Выполнено</i>", reply_markup=None)
+    except TelegramBadRequest:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer("Выполнено ✓")
+
+
+@router.callback_query(F.data.startswith("ci:"))
+async def checkin_answer(callback: CallbackQuery) -> None:
+    if not isinstance(callback.message, Message):
+        await callback.answer("Это сообщение устарело", show_alert=True)
+        return
+    try:
+        _, notification_id, action = callback.data.split(":")
+        result = await backend.checkin(int(notification_id), callback.message.chat.id, action)
+    except (ValueError, BackendError):
+        await callback.answer("Не получилось — попробуйте ещё раз", show_alert=True)
+        return
+    try:
+        await callback.message.edit_text(f"{callback.message.html_text}\n\n<i>{messages.checkin_result(result)}</i>", reply_markup=None)
+    except TelegramBadRequest:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer()

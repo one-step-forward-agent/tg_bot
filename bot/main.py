@@ -17,6 +17,8 @@ COMMANDS = [
     BotCommand(command="today", description="План на сегодня"),
     BotCommand(command="tomorrow", description="План на завтра"),
     BotCommand(command="week", description="Ближайшие 7 дней"),
+    BotCommand(command="done", description="Отметить выполненные задачи"),
+    BotCommand(command="stats", description="Статистика выполнения"),
     BotCommand(command="reminders", description="Настройки напоминаний"),
     BotCommand(command="help", description="Что я умею"),
     BotCommand(command="unlink", description="Отключить Telegram от Dayla"),
