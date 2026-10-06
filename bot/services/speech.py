@@ -31,6 +31,8 @@ def recognize_audio(path: str) -> str:
         ],
         check=True,
         capture_output=True,
+        # A malformed file must not hang the worker
+        timeout=60,
     )
     audio_segment = AudioSegment.from_wav(wav_path)
     logger.info(
