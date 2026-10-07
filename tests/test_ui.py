@@ -336,3 +336,19 @@ async def test_discuss_advice_and_quick_reply(backend):
     await chat.quick_reply(callback)
     backend.chat.assert_awaited_with(100, "Помоги перепланировать")
     assert "Вот план" in callback.message.answer.call_args.args[0]
+
+
+def test_model_markdown_becomes_telegram_html():
+    text = messages.rich(
+        "### План на неделю\n**Важно:** сдать *отчёт* до `пятницы`\n- пункт <один>\n* пункт два\n```\ncode **x**\n```\n[ссылка](https://dayla.example/app)"
+    )
+    assert_telegram_html(text)
+    assert "<b>План на неделю</b>" in text and "<b>Важно:</b>" in text and "<i>отчёт</i>" in text
+    assert "<code>пятницы</code>" in text and "• пункт &lt;один&gt;" in text and "• пункт два" in text
+    assert "<code>code **x**</code>" in text and '<a href="https://dayla.example/app">ссылка</a>' in text
+    # Crossed markers cannot become broken HTML: the text falls back to plain
+    crossed = messages.rich("**жирный *и** курсив*")
+    assert_telegram_html(crossed)
+    assert "**" not in crossed
+    assert messages.rich("2*3 = 6, файл_имя_тест") == "2*3 = 6, файл_имя_тест"
+    assert_telegram_html(messages.answer("**Готово** — вот план"))

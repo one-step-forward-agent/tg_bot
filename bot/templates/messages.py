@@ -1,5 +1,7 @@
 import html
+import re
 from datetime import date, datetime, timedelta
+from html.parser import HTMLParser
 
 MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"]
 WEEKDAYS_SHORT = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"]
@@ -16,6 +18,68 @@ BAR_WIDTH = 10
 
 def esc(value) -> str:
     return html.escape(str(value or ""))
+
+
+class _TagBalance(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.stack: list[str] = []
+        self.ok = True
+
+    def handle_starttag(self, tag, attrs) -> None:
+        self.stack.append(tag)
+
+    def handle_endtag(self, tag) -> None:
+        if not self.stack or self.stack.pop() != tag:
+            self.ok = False
+
+
+def _balanced(text: str) -> bool:
+    checker = _TagBalance()
+    checker.feed(text)
+    return checker.ok and not checker.stack
+
+
+def _inline(line: str) -> str:
+    """Inline markdown of one escaped line: code first (its content is left as is), then links, bold, italic, strike."""
+    codes: list[str] = []
+
+    def keep(match: re.Match) -> str:
+        codes.append(match.group(1))
+        return f"\x00{len(codes) - 1}\x00"
+
+    line = re.sub(r"`([^`\n]+)`", keep, line)
+    line = re.sub(r"\[([^\]]+)\]\((https?://[^)\s]+)\)", r'<a href="\2">\1</a>', line)
+    line = re.sub(r"\*\*(?=\S)(.+?)(?<=\S)\*\*", r"<b>\1</b>", line)
+    line = re.sub(r"__(?=\S)(.+?)(?<=\S)__", r"<b>\1</b>", line)
+    line = re.sub(r"(?<![\w*])\*(?=\S)([^*\n]+?)(?<=\S)\*(?![\w*])", r"<i>\1</i>", line)
+    line = re.sub(r"(?<![\w_])_(?=\S)([^_\n]+?)(?<=\S)_(?![\w_])", r"<i>\1</i>", line)
+    line = re.sub(r"~~(?=\S)(.+?)(?<=\S)~~", r"<s>\1</s>", line)
+    return re.sub(r"\x00(\d+)\x00", lambda match: f"<code>{codes[int(match.group(1))]}</code>", line)
+
+
+def rich(text) -> str:
+    """Text written by the model, with its markdown turned into Telegram HTML; anything else is escaped.
+    If the markers do not pair up into valid HTML, the text is shown plain without them."""
+    lines, in_code = [], False
+    for raw in str(text or "").splitlines():
+        if raw.strip().startswith("```"):
+            in_code = not in_code
+            continue
+        line = esc(raw)
+        if in_code:
+            lines.append(f"<code>{line}</code>" if line.strip() else "")
+        elif heading := re.match(r"^\s*#{1,6}\s+(.+)$", line):
+            lines.append(f"<b>{heading.group(1).replace('*', '').replace('_', ' ').strip()}</b>")
+        else:
+            line = re.sub(r"^(\s*)[-*+]\s+", r"\1• ", line)
+            line = re.sub(r"^\s*&gt;\s?", "", line)
+            lines.append(_inline(line))
+    result = "\n".join(lines).strip()
+    if _balanced(result):
+        return result
+    plain = re.sub(r"(\*\*|__|~~|`|^#{1,6}\s+)", "", str(text or ""), flags=re.M)
+    return esc(plain)
 
 
 def plural(count: int, one: str, few: str, many: str) -> str:
@@ -139,7 +203,7 @@ def proposal(reply: dict) -> str:
         body = "\n".join(lines)
     parts = [header, body]
     if reply.get("answer"):
-        parts.append(f"💬 {esc(reply['answer'])}")
+        parts.append(f"💬 {rich(reply['answer'])}")
     if any(event.get("event_id") for event in events):
         parts.append("Всё верно? Нажмите <b>«Сохранить»</b> или поправьте название, дату и время.")
     else:
@@ -207,7 +271,7 @@ def created(reply: dict) -> str:
         header = f"✨ <b>Добавила {len(events)} {plural(len(events), 'событие', 'события', 'событий')}</b>"
     parts = [header, *[event_card(event) for event in events]]
     if reply.get("answer"):
-        parts.append(f"💬 {esc(reply['answer'])}")
+        parts.append(f"💬 {rich(reply['answer'])}")
     return "\n\n".join(parts)
 
 
@@ -266,12 +330,12 @@ def advice(reply: dict) -> str:
     icons = {"warning": "⚠️", "success": "✅"}
     lines = ["💡 <b>Советы на сегодня</b>", ""]
     for index, item in enumerate(items, 1):
-        lines.append(f"{icons.get(item.get('kind'), '💡')} <b>{index}. {esc(item['title'])}</b>\n{esc(item['text'])}")
+        lines.append(f"{icons.get(item.get('kind'), '💡')} <b>{index}. {esc(item['title'])}</b>\n{rich(item['text'])}")
     return "\n\n".join([lines[0], *lines[2:]])
 
 
 def topic(reply: dict) -> str:
-    return f"💡 <b>Обсуждаем: {esc(reply['title'])}</b>\n{esc(reply['text'])}\n\nСпросите, что непонятно, или выберите вопрос ниже."
+    return f"💡 <b>Обсуждаем: {esc(reply['title'])}</b>\n{rich(reply['text'])}\n\nСпросите, что непонятно, или выберите вопрос ниже."
 
 
 def delete_proposal(reply: dict) -> str:
@@ -294,7 +358,7 @@ def completed(reply: dict) -> str:
 
 
 def answer(text: str) -> str:
-    return f"💬 {esc(text)}"
+    return f"💬 {rich(text)}"
 
 
 def not_found(text: str) -> str:
