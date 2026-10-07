@@ -9,6 +9,10 @@ MENU_REMINDERS = "🔔 Напоминания"
 MENU_HELP = "💡 Помощь"
 MENU_DONE = "✅ Выполнено"
 MENU_STATS = "📊 Статистика"
+MENU_ADVICE = "💡 Советы"
+MENU_ANALYSIS = "📈 Анализ недели"
+# The same quick replies as under a recommendation in the web chat
+TOPIC_REPLIES = ("Как это сделать?", "Помоги перепланировать", "Что можно перенести?")
 SCOPES = {"today": "Сегодня", "tomorrow": "Завтра", "week": "Неделя"}
 CALLBACK_LIMIT = 64
 
@@ -16,6 +20,7 @@ main_menu = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text=MENU_TODAY), KeyboardButton(text=MENU_TOMORROW), KeyboardButton(text=MENU_WEEK)],
         [KeyboardButton(text=MENU_DONE), KeyboardButton(text=MENU_STATS)],
+        [KeyboardButton(text=MENU_ADVICE), KeyboardButton(text=MENU_ANALYSIS)],
         [KeyboardButton(text=MENU_REMINDERS), KeyboardButton(text=MENU_HELP)],
     ],
     resize_keyboard=True,
@@ -58,7 +63,7 @@ def link_keyboard(app_url: str | None) -> InlineKeyboardMarkup | None:
     url = public_url(app_url)
     if not url:
         return None
-    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔗 Подключить в Dayla", url=f"{url}/app/settings#telegram")]])
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔗 Подключить в Dayla", url=f"{url}/app/account#telegram")]])
 
 
 def created_keyboard(event_ids: list[int], events: list[dict], app_url: str | None) -> InlineKeyboardMarkup | None:
@@ -103,6 +108,71 @@ def digest_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+RATING_PREFIX = "rt:"
+
+
+def rating_row(message_id: int, chosen: int | None = None) -> list[InlineKeyboardButton]:
+    return [
+        InlineKeyboardButton(text="👍" + (" ✓" if chosen == 1 else ""), callback_data=f"rt:{message_id}:{0 if chosen == 1 else 1}"),
+        InlineKeyboardButton(text="👎" + (" ✓" if chosen == -1 else ""), callback_data=f"rt:{message_id}:{0 if chosen == -1 else -1}"),
+    ]
+
+
+def with_rating(markup: InlineKeyboardMarkup | None, message_id: int | None) -> InlineKeyboardMarkup | None:
+    """Small 👍 / 👎 under an answer, so anyone who wants can rate it."""
+    if not message_id:
+        return markup
+    rows = [row for row in (markup.inline_keyboard if markup else []) if not any((button.callback_data or "").startswith(RATING_PREFIX) for button in row)]
+    return InlineKeyboardMarkup(inline_keyboard=[*rows, rating_row(message_id)])
+
+
+def rated(markup: InlineKeyboardMarkup | None, message_id: int, value: int) -> InlineKeyboardMarkup:
+    rows = [row for row in (markup.inline_keyboard if markup else []) if not any((button.callback_data or "").startswith(RATING_PREFIX) for button in row)]
+    return InlineKeyboardMarkup(inline_keyboard=[*rows, rating_row(message_id, value or None)])
+
+
+def advice_keyboard(count: int, message_id: int | None) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=f"💬 Обсудить {index + 1}" if count > 1 else "💬 Обсудить", callback_data=f"adv:{index}") for index in range(min(count, 3))]]
+    return with_rating(InlineKeyboardMarkup(inline_keyboard=rows), message_id)
+
+
+def topic_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=text, callback_data=f"qr:{index}")] for index, text in enumerate(TOPIC_REPLIES)])
+
+
+def delete_keyboard(draft_id: int, count: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[
+            InlineKeyboardButton(text=f"🗑 Удалить ({count})", callback_data=f"dr:{draft_id}:ok"),
+            InlineKeyboardButton(text="✖️ Не удалять", callback_data=f"dr:{draft_id}:no"),
+        ]]
+    )
+
+
+def evening_keyboard(notification_id: int, payload: dict | None) -> InlineKeyboardMarkup:
+    rows = []
+    if (payload or {}).get("event_ids"):
+        rows.append([InlineKeyboardButton(text="↪️ Перенести невыполненное на завтра", callback_data=f"ci:{notification_id}:move")])
+    rows.append([InlineKeyboardButton(text="🗓 План на завтра", callback_data="ag:tomorrow"), InlineKeyboardButton(text="✅ Отметить выполненные", callback_data="dn:today")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def deadline_keyboard(event_id: int | None, url: str | None) -> InlineKeyboardMarkup | None:
+    rows = []
+    if event_id:
+        rows.append([InlineKeyboardButton(text="✅ Выполнено", callback_data=f"rd:{event_id}")])
+    if public_url(url):
+        rows.append([InlineKeyboardButton(text="↗️ Открыть задачу", url=url)])
+    return InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
+
+
+def updated_keyboard(events: list[dict], app_url: str | None) -> InlineKeyboardMarkup | None:
+    url = public_url(events[0].get("url")) if len(events) == 1 else None
+    if not url and public_url(app_url) and events:
+        url = f"{app_url}/app/calendar?day={events[0]['start'][:10]}"
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="↗️ Открыть в Dayla", url=url)]]) if url else None
+
+
 def settings_keyboard(values: dict, app_url: str | None) -> InlineKeyboardMarkup:
     leads = set(values["lead_times"])
     rows = [
@@ -115,16 +185,21 @@ def settings_keyboard(values: dict, app_url: str | None) -> InlineKeyboardMarkup
             for start in range(0, len(LEAD_PRESETS), 3)
         ],
         [InlineKeyboardButton(text=("✓ " if values["daily_digest_enabled"] else "") + "☀️ Утренний план", callback_data="rs:digest")],
+        [
+            InlineKeyboardButton(text=("✓ " if values.get("evening_enabled") else "") + "🌙 Итоги дня", callback_data="rs:evening"),
+            InlineKeyboardButton(text=("✓ " if values.get("deadline_enabled") else "") + "⏳ Дедлайны", callback_data="rs:deadline"),
+        ],
     ]
     url = public_url(app_url)
     if url:
-        rows.append([InlineKeyboardButton(text="⚙️ Все настройки в Dayla", url=f"{url}/app/settings#reminders")])
+        rows.append([InlineKeyboardButton(text="⚙️ Все настройки в Dayla", url=f"{url}/app/account#reminders")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def proposal_keyboard(draft_id: int, count: int) -> InlineKeyboardMarkup:
+def proposal_keyboard(draft_id: int, count: int, change: bool = False) -> InlineKeyboardMarkup:
+    add = "✅ Сохранить" if change else "✅ Добавить" if count == 1 else f"✅ Добавить все ({count})"
     rows = [[
-        InlineKeyboardButton(text="✅ Добавить" if count == 1 else f"✅ Добавить все ({count})", callback_data=f"dr:{draft_id}:ok"),
+        InlineKeyboardButton(text=add, callback_data=f"dr:{draft_id}:ok"),
         InlineKeyboardButton(text="✖️ Отмена", callback_data=f"dr:{draft_id}:no"),
     ]]
     if count == 1:

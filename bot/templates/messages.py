@@ -3,6 +3,7 @@ from datetime import date, datetime, timedelta
 
 MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"]
 WEEKDAYS_SHORT = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"]
+WEEKDAYS = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"]
 LEAD_PRESETS = (5, 15, 30, 60, 1440)
 MESSAGE_LIMIT = 3800
 EXAMPLES = (
@@ -44,12 +45,27 @@ def short_date(day: date) -> str:
 
 
 def day_text(day: date, today: date) -> str:
+    """"Сегодня, среда, 7 октября", "Завтра, четверг, 8 октября", then "Пятница, 9 октября"."""
+    base = f"{WEEKDAYS[day.weekday()]}, {day.day} {MONTHS[day.month - 1]}"
     if day == today:
-        return f"Сегодня, {day.day} {MONTHS[day.month - 1]}"
+        return f"Сегодня, {base}"
     if day == today + timedelta(days=1):
-        return f"Завтра, {day.day} {MONTHS[day.month - 1]}"
-    base = short_date(day)
+        return f"Завтра, {base}"
     return base[0].upper() + base[1:]
+
+
+def short_day(day: date, today: date) -> str:
+    if day == today:
+        return "сегодня"
+    if day == today + timedelta(days=1):
+        return "завтра"
+    return short_date(day)
+
+
+def deadline_text(value: str, today: date) -> str:
+    moment = datetime.fromisoformat(value)
+    text = short_day(moment.date(), today)
+    return text if (moment.hour, moment.minute) >= (23, 59) else f"{text} {moment:%H:%M}"
 
 
 def priority_mark(event: dict) -> str:
@@ -60,8 +76,9 @@ def event_card(event: dict) -> str:
     start = datetime.fromisoformat(event["start"])
     end = datetime.fromisoformat(event["end"])
     today = datetime.now(start.tzinfo).date()
+    last = date.fromisoformat(event["end_date"]) if event.get("end_date") else None
     if event.get("all_day"):
-        when = "без времени"
+        when = f"до {short_day(last, today)}" if last and last > start.date() else "без времени"
     elif start.date() == end.date():
         when = f"{start:%H:%M}–{end:%H:%M}"
     else:
@@ -74,6 +91,16 @@ def event_card(event: dict) -> str:
         lines.append("🔔 В момент начала" if reminder == 0 else f"🔔 За {format_lead(reminder)}")
     if event.get("recurrence"):
         lines.append(f"🔁 {esc(event['recurrence']).capitalize()}")
+    if event.get("deadline"):
+        lines.append(f"⏳ Дедлайн: {deadline_text(event['deadline'], today)}")
+    if event.get("fixed"):
+        lines.append("📌 Нельзя переносить")
+    before = event.get("before")
+    if before:
+        was = short_day(date.fromisoformat(before["date"]), today)
+        if before.get("time"):
+            was += f" {before['time']}"
+        lines.append(f"<i>Было: {esc(before['title']) + ', ' if before['title'] != event['title'] else ''}{was}</i>")
     return "\n".join(lines)
 
 
@@ -84,6 +111,10 @@ def proposal_line(number: int, event: dict) -> str:
     if not event.get("all_day") and event.get("end_time"):
         when += f"–{event['end_time']}"
     repeat = f" · 🔁 {esc(event['recurrence'])}" if event.get("recurrence") else ""
+    if event.get("end_date") and event["end_date"] > event["start"][:10]:
+        repeat += f" · до {short_day(date.fromisoformat(event['end_date']), today)}"
+    if event.get("deadline"):
+        repeat += f" · ⏳ {deadline_text(event['deadline'], today)}"
     return f"<b>{number}.</b> {esc(event['title'])}\n     {day_text(start.date(), today)} · <code>{when}</code>{repeat}"
 
 
@@ -91,6 +122,8 @@ def proposal(reply: dict) -> str:
     events = reply["events"]
     count = len(events)
     header = "📝 <b>Проверьте задачу</b>" if count == 1 else f"📝 <b>Проверьте {count} {plural(count, 'задачу', 'задачи', 'задач')}</b>"
+    if count == 1 and events[0].get("event_id"):
+        header = "✏️ <b>Проверьте изменение</b>"
     if reply.get("note"):
         header += f"  ·  <i>{esc(reply['note'])}</i>"
     if count == 1:
@@ -107,7 +140,10 @@ def proposal(reply: dict) -> str:
     parts = [header, body]
     if reply.get("answer"):
         parts.append(f"💬 {esc(reply['answer'])}")
-    parts.append("Всё верно? Нажмите <b>«Добавить»</b> или поправьте название, дату и время.")
+    if any(event.get("event_id") for event in events):
+        parts.append("Всё верно? Нажмите <b>«Сохранить»</b> или поправьте название, дату и время.")
+    else:
+        parts.append("Всё верно? Нажмите <b>«Добавить»</b> или поправьте название, дату и время.")
     return "\n\n".join(parts)
 
 
@@ -138,8 +174,10 @@ def stats(data: dict) -> str:
         lines.append(f"<code>{label} {bar(day['percent']) if day['total'] else ' ' * BAR_WIDTH} {value}</code>")
     if data["total"]:
         lines += ["", f"За неделю выполнено <b>{data['done']} из {data['total']}</b> ({data['percent']}%)"]
-    if data.get("streak", 0) >= 2:
+    if data.get("streak", 0) >= 1:
         lines.append(f"🔥 Серия: {data['streak']} {plural(data['streak'], 'день', 'дня', 'дней')} подряд всё выполнено")
+    if data.get("best_streak", 0) > data.get("streak", 0):
+        lines.append(f"🏆 Лучшая серия: {data['best_streak']} {plural(data['best_streak'], 'день', 'дня', 'дней')}")
     return "\n".join(lines)
 
 
@@ -161,7 +199,9 @@ def checkin_result(result: dict) -> str:
 
 def created(reply: dict) -> str:
     events = reply["events"]
-    if len(events) == 1:
+    if reply.get("kind") == "updated":
+        header = "✏️ <b>Изменила</b>"
+    elif len(events) == 1:
         header = "✨ <b>Добавила в календарь</b>"
     else:
         header = f"✨ <b>Добавила {len(events)} {plural(len(events), 'событие', 'события', 'событий')}</b>"
@@ -211,6 +251,48 @@ def agenda(reply: dict) -> str:
     return "\n".join(lines)
 
 
+def help_sections(reply: dict) -> str:
+    lines = ["💡 <b>Что я умею</b>", "Пишите как другу — текстом, голосом или документом. Всё, что меняет календарь, я сначала покажу на подтверждение."]
+    for section in reply["sections"]:
+        lines += ["", f"<b>{esc(section['title'])}</b>", "  ·  ".join(f"<i>«{esc(example)}»</i>" for example in section["examples"])]
+    lines += ["", "Команды: /today /tomorrow /week /done /stats /advice /analysis /reminders"]
+    return "\n".join(lines)
+
+
+def advice(reply: dict) -> str:
+    items = reply.get("items") or []
+    if not items:
+        return "💡 Пока советовать нечего — план в порядке."
+    icons = {"warning": "⚠️", "success": "✅"}
+    lines = ["💡 <b>Советы на сегодня</b>", ""]
+    for index, item in enumerate(items, 1):
+        lines.append(f"{icons.get(item.get('kind'), '💡')} <b>{index}. {esc(item['title'])}</b>\n{esc(item['text'])}")
+    return "\n\n".join([lines[0], *lines[2:]])
+
+
+def topic(reply: dict) -> str:
+    return f"💡 <b>Обсуждаем: {esc(reply['title'])}</b>\n{esc(reply['text'])}\n\nСпросите, что непонятно, или выберите вопрос ниже."
+
+
+def delete_proposal(reply: dict) -> str:
+    count = reply["count"]
+    lines = [f"🗑 <b>Удалить {count} {plural(count, 'задачу', 'задачи', 'задач')}?</b>", f"<i>{esc(reply['title'])}</i>", ""]
+    for event in reply["events"][:10]:
+        start = datetime.fromisoformat(event["start"])
+        when = "без времени" if event.get("all_day") else f"{start:%H:%M}"
+        lines.append(f"• {esc(event['title'])} — {short_date(start.date())}, <code>{when}</code>")
+    if count > 10:
+        lines.append(f"• …и ещё {count - 10}")
+    lines += ["", "Это нельзя отменить. Подтвердите кнопкой ниже."]
+    return "\n".join(lines)
+
+
+def completed(reply: dict) -> str:
+    lines = [f"✅ <b>{esc(reply['text'])}</b>"]
+    lines += [f"• <s>{esc(event['title'])}</s>" for event in reply["events"][:20]]
+    return "\n".join(lines)
+
+
 def answer(text: str) -> str:
     return f"💬 {esc(text)}"
 
@@ -243,16 +325,16 @@ def reading_document(name: str) -> str:
 
 def welcome_unlinked(has_link_button: bool) -> str:
     how = (
-        "Нажмите кнопку ниже, войдите и выберите <b>Настройки → Telegram → Подключить</b>."
+        "Нажмите кнопку ниже, войдите и выберите <b>Аккаунт → Telegram → Подключить</b>."
         if has_link_button
-        else "Откройте сайт Dayla → <b>Настройки → Telegram</b> и нажмите <b>«Подключить Telegram»</b>."
+        else "Откройте сайт Dayla → <b>Аккаунт → Telegram</b> и нажмите <b>«Подключить Telegram»</b>."
     )
     return (
         "👋 <b>Привет! Я Dayla</b> — ассистент, который планирует ваш день.\n\n"
         "После подключения аккаунта здесь можно:\n"
         "💬 планировать обычными словами, голосом или документом\n"
         "📅 смотреть план на день и неделю\n"
-        "🔔 получать напоминания и утренний план\n\n"
+        "🔔 получать напоминания, утренний план и итоги дня\n\n"
         f"<b>Как подключить</b>\n{how}"
     )
 
@@ -281,7 +363,12 @@ def help_text() -> str:
         f"<i>«{EXAMPLES[0]}»</i>\n"
         f"<i>«{EXAMPLES[1]}»</i>\n"
         "<i>«Купить продукты завтра»</i> — задача без времени\n"
-        "<i>«Расписание: в понедельник математика в 8:30, физика в 9:25…»</i> — сразу несколько задач\n\n"
+        "<i>«Расписание: в понедельник математика в 8:30, физика в 9:25…»</i> — сразу несколько задач\n"
+        "<i>«Конференция с 10 по 12 октября»</i> — на несколько дней\n"
+        "<i>«Отчёт, дедлайн в пятницу 18:00»</i> — с дедлайном, напомню о нём заранее\n\n"
+        "<b>Менять задачи</b>:\n"
+        "<i>«Перенеси созвон с Олей на пятницу в 15:00»</i>  ·  <i>«Продли встречу до 18:00»</i>  ·  "
+        "<i>«Сдвинь тренировку на час позже»</i>\n\n"
         "Перед добавлением я покажу черновик: его можно поправить или отменить.\n\n"
         "<b>Отвечать на вопросы о планах</b>:\n"
         f"<i>«{EXAMPLES[2]}»</i>  ·  <i>«Когда у меня стоматолог?»</i>\n\n"
@@ -292,13 +379,15 @@ def help_text() -> str:
         "/week — ближайшие 7 дней\n"
         "/done — отметить выполненные задачи\n"
         "/stats — статистика выполнения\n"
+        "/advice — советы по плану\n"
+        "/analysis — анализ недели и что перенести\n"
         "/reminders — настройки напоминаний\n"
         "/unlink — отключить Telegram"
     )
 
 
 def link_failed() -> str:
-    return "⚠️ <b>Ссылка недействительна или устарела</b>\n\nПолучите новую в Dayla: <b>Настройки → Telegram → Подключить</b>."
+    return "⚠️ <b>Ссылка недействительна или устарела</b>\n\nПолучите новую в Dayla: <b>Аккаунт → Telegram → Подключить</b>."
 
 
 def backend_unavailable() -> str:
@@ -341,16 +430,20 @@ def snoozed(minutes: int) -> str:
     return f"⏰ Напомню через {format_lead(minutes)}"
 
 
-def reminder_settings(email: str, values: dict) -> str:
+def reminder_settings(email: str | None, values: dict) -> str:
     leads = ", ".join(f"за {format_lead(minutes)}" for minutes in sorted(values["lead_times"])) or "не выбрано"
     digest = f"в {values['daily_digest_time'][:5]}" if values["daily_digest_enabled"] else "выключен"
     quiet = f"{values['quiet_hours_start'][:5]}–{values['quiet_hours_end'][:5]}" if values["quiet_hours_enabled"] else "выключены"
+    evening = f"в {values['evening_time'][:5]}" if values.get("evening_enabled") and values.get("evening_time") else "выключены"
     return (
         "🔔 <b>Напоминания</b>\n"
-        f"<i>{esc(email)}</i>\n\n"
+        + (f"<i>{esc(email)}</i>\n" if email else "")
+        + "\n"
         f"Статус: {'<b>включены</b> ✅' if values['enabled'] else '<b>выключены</b> ⏸'}\n"
         f"Когда: {leads}\n"
         f"Утренний план: {digest}\n"
+        f"Итоги дня: {evening}\n"
+        f"Дедлайны: {'напоминаю за 3 дня, за день и за 2 часа' if values.get('deadline_enabled') else 'выключены'}\n"
         f"Тихие часы: {quiet}\n\n"
         "Нажмите кнопку, чтобы изменить."
     )

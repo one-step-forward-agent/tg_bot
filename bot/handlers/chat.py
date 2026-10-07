@@ -10,7 +10,24 @@ from aiogram.types import CallbackQuery, ForceReply, Message
 from aiogram.utils.chat_action import ChatActionSender
 
 from bot.handlers.account import report
-from bot.keyboards import agenda_keyboard, created_keyboard, expand_ids, proposal_item_keyboard, proposal_keyboard
+from aiogram.filters import Command
+
+from bot.keyboards import (
+    TOPIC_REPLIES,
+    advice_keyboard,
+    agenda_keyboard,
+    created_keyboard,
+    delete_keyboard,
+    done_keyboard,
+    settings_keyboard,
+    topic_keyboard,
+    expand_ids,
+    proposal_item_keyboard,
+    proposal_keyboard,
+    rated,
+    updated_keyboard,
+    with_rating,
+)
 from bot.services import site
 from bot.services.backend import BackendError, backend
 from bot.services.speech import recognize_audio
@@ -28,20 +45,48 @@ DOCUMENT_TYPES = (".pdf", ".docx")
 async def deliver(message: Message, reply: dict) -> None:
     app_url = await site.app_url()
     kind = reply.get("kind")
+    rating = reply.get("message_id")
     if kind == "proposal":
-        await message.answer(messages.proposal(reply), reply_markup=proposal_keyboard(reply["draft_id"], len(reply["events"])))
-    elif kind == "created":
-        await message.answer(messages.created(reply), reply_markup=created_keyboard(reply.get("event_ids") or [], reply["events"], app_url))
+        await message.answer(messages.proposal(reply), reply_markup=proposal_keyboard(reply["draft_id"], len(reply["events"]), is_change(reply)))
+    elif kind == "delete_proposal":
+        await message.answer(messages.delete_proposal(reply), reply_markup=delete_keyboard(reply["draft_id"], reply["count"]))
+    elif kind in ("created", "updated"):
+        await message.answer(messages.created(reply), reply_markup=result_keyboard(reply, app_url))
+    elif kind == "completed":
+        await message.answer(messages.completed(reply), reply_markup=with_rating(None, rating))
+    elif kind == "agenda" and reply.get("mark"):
+        await message.answer(messages.done_list(reply), reply_markup=done_keyboard(reply, reply.get("scope") or "today"))
     elif kind == "agenda":
-        await message.answer(messages.agenda(reply), reply_markup=agenda_keyboard(reply.get("scope"), app_url))
+        await message.answer(messages.agenda(reply), reply_markup=with_rating(agenda_keyboard(reply.get("scope"), app_url), rating))
+    elif kind == "stats":
+        await message.answer(messages.stats(reply), reply_markup=with_rating(None, rating))
+    elif kind == "help":
+        await message.answer(messages.help_sections(reply))
+    elif kind == "advice":
+        await message.answer(messages.advice(reply), reply_markup=advice_keyboard(len(reply.get("items") or []), rating))
+    elif kind == "reminders":
+        await message.answer(messages.reminder_settings(None, reply["settings"]), reply_markup=settings_keyboard(reply["settings"], app_url))
+    elif kind == "topic":
+        await message.answer(messages.topic(reply), reply_markup=topic_keyboard())
     elif kind == "answer":
-        await message.answer(messages.answer(reply["text"]))
+        await message.answer(messages.answer(reply["text"]), reply_markup=with_rating(None, rating))
     elif kind == "not_found":
-        await message.answer(messages.not_found(reply["text"]))
+        await message.answer(messages.not_found(reply["text"]), reply_markup=with_rating(None, rating))
     elif kind in ("edit_error", "cancelled"):
         await message.answer(messages.answer(reply["text"]))
     else:
-        await message.answer(messages.nothing())
+        await message.answer(messages.nothing(), reply_markup=with_rating(None, rating))
+
+
+def is_change(reply: dict) -> bool:
+    return any(event.get("event_id") for event in reply["events"])
+
+
+def result_keyboard(reply: dict, app_url: str | None):
+    """"Отменить" removes new tasks only; a confirmed change of an existing task is not undone this way."""
+    if reply.get("kind") == "updated":
+        return updated_keyboard(reply["events"], app_url)
+    return created_keyboard(reply.get("event_ids") or [], reply["events"], app_url)
 
 
 async def ask(message: Message, text: str) -> None:
@@ -69,6 +114,42 @@ async def ensure_linked(message: Message) -> bool:
 @router.message(F.text & ~F.text.startswith("/"))
 async def text_message(message: Message) -> None:
     await ask(message, message.text)
+
+
+@router.message(Command("advice", "analysis"))
+async def shared_command(message: Message) -> None:
+    """Commands the backend understands the same way as the web chat."""
+    await ask(message, "/advice" if message.text.startswith("/advice") else "проанализируй мою неделю")
+
+
+@router.callback_query(F.data.startswith("adv:"))
+async def discuss_advice(callback: CallbackQuery) -> None:
+    """"Обсудить" under advice: the recommendation becomes the topic, like in the web chat."""
+    if not isinstance(callback.message, Message):
+        await callback.answer()
+        return
+    try:
+        reply = await backend.topic(callback.message.chat.id, int(callback.data.split(":")[1]))
+    except (ValueError, BackendError):
+        await callback.answer("Совет устарел — запросите советы ещё раз", show_alert=True)
+        return
+    await callback.message.answer(messages.topic(reply), reply_markup=topic_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("qr:"))
+async def quick_reply(callback: CallbackQuery) -> None:
+    if not isinstance(callback.message, Message):
+        await callback.answer()
+        return
+    try:
+        text = TOPIC_REPLIES[int(callback.data.split(":")[1])]
+    except (ValueError, IndexError):
+        await callback.answer()
+        return
+    await callback.answer()
+    await callback.message.answer(f"<i>{messages.esc(text)}</i>")
+    await ask(callback.message, text)
 
 
 @router.message(F.content_type.in_({ContentType.VOICE, ContentType.AUDIO, ContentType.VIDEO_NOTE}))
@@ -140,6 +221,25 @@ async def other_message(message: Message) -> None:
         await message.answer(messages.unsupported_message())
 
 
+@router.callback_query(F.data.startswith("rt:"))
+async def rate(callback: CallbackQuery) -> None:
+    """👍 / 👎 under an answer; pressing the chosen one again removes the rating."""
+    if not isinstance(callback.message, Message):
+        await callback.answer()
+        return
+    try:
+        _, message_id, value = callback.data.split(":")
+        await backend.rate(callback.message.chat.id, int(message_id), int(value))
+    except (ValueError, BackendError):
+        await callback.answer("Не получилось сохранить оценку", show_alert=True)
+        return
+    try:
+        await callback.message.edit_reply_markup(reply_markup=rated(callback.message.reply_markup, int(message_id), int(value)))
+    except TelegramBadRequest:
+        pass
+    await callback.answer("Спасибо за оценку!" if int(value) else "Оценка снята")
+
+
 @router.callback_query(F.data.startswith("undo:"))
 async def undo(callback: CallbackQuery) -> None:
     if not isinstance(callback.message, Message):
@@ -160,7 +260,7 @@ async def undo(callback: CallbackQuery) -> None:
 
 async def _show_proposal(callback: CallbackQuery, reply: dict) -> None:
     if reply.get("kind") == "proposal":
-        text, keyboard = messages.proposal(reply), proposal_keyboard(reply["draft_id"], len(reply["events"]))
+        text, keyboard = messages.proposal(reply), proposal_keyboard(reply["draft_id"], len(reply["events"]), is_change(reply))
     else:
         text, keyboard = messages.proposal_closed(reply.get("text") or "Черновик закрыт"), None
     try:
@@ -181,13 +281,16 @@ async def draft_action(callback: CallbackQuery) -> None:
         draft_id, action = int(parts[1]), parts[2]
         if action == "ok":
             reply = await backend.draft_confirm(chat_id, draft_id)
-            app_url = await site.app_url()
-            keyboard = created_keyboard(reply.get("event_ids") or [], reply["events"], app_url)
+            if reply.get("kind") == "deleted":
+                await callback.message.edit_text(f"🗑 <b>{messages.esc(reply['text'])}</b>", reply_markup=None)
+                await callback.answer("Удалено ✓")
+                return
+            keyboard = result_keyboard(reply, await site.app_url())
             try:
                 await callback.message.edit_text(messages.created(reply), reply_markup=keyboard)
             except TelegramBadRequest:
                 await callback.message.answer(messages.created(reply), reply_markup=keyboard)
-            await callback.answer("Добавлено ✓")
+            await callback.answer("Изменено ✓" if reply.get("kind") == "updated" else "Добавлено ✓")
         elif action == "no":
             await _show_proposal(callback, await backend.draft_cancel(chat_id, draft_id))
             await callback.answer("Отменено")

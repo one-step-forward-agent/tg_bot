@@ -15,7 +15,7 @@ router.message.filter(F.chat.type == ChatType.PRIVATE)
 
 MENU_SCOPES = {MENU_TODAY: "today", MENU_TOMORROW: "tomorrow", MENU_WEEK: "week"}
 # Notifications keep their text: buttons on them answer with a new message
-NOTIFICATION_PREFIXES = ("☀️", "🕐", "🔔")
+NOTIFICATION_PREFIXES = ("☀️", "🕐", "🔔", "🌙", "⏳", "💡")
 
 
 async def render(chat_id: int, scope: str) -> tuple[str, object]:

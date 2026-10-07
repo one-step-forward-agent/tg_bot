@@ -56,6 +56,12 @@ class DaylaBackend:
     async def chat(self, chat_id: int, text: str) -> dict:
         return await self._request("POST", f"/internal/bot/chat/{chat_id}", {"text": text[:50000]}, timeout=ASSISTANT_TIMEOUT)
 
+    async def topic(self, chat_id: int, index: int) -> dict:
+        return await self._request("POST", f"/internal/bot/chat/{chat_id}/topic", {"index": index})
+
+    async def rate(self, chat_id: int, message_id: int, value: int) -> dict:
+        return await self._request("POST", f"/internal/bot/chat/{chat_id}/messages/{message_id}/rating", {"value": value})
+
     async def agenda(self, chat_id: int, scope: str) -> dict:
         return await self._request("GET", f"/internal/bot/chat/{chat_id}/agenda/{scope}")
 

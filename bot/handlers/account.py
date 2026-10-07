@@ -93,6 +93,10 @@ async def settings_button(callback: CallbackQuery) -> None:
             update = {"enabled": not values["enabled"]}
         elif action[1] == "digest":
             update = {"daily_digest_enabled": not values["daily_digest_enabled"]}
+        elif action[1] == "evening":
+            update = {"evening_enabled": not values.get("evening_enabled")}
+        elif action[1] == "deadline":
+            update = {"deadline_enabled": not values.get("deadline_enabled")}
         elif action[1] == "lead" and len(action) == 3 and action[2].isdigit():
             update = {"lead_times": sorted(set(values["lead_times"]) ^ {int(action[2])})}
         else:

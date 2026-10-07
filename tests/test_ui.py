@@ -212,3 +212,127 @@ def test_notification_keyboards():
     assert notifications.keyboard_for({"kind": "checkin", "id": 3, "payload": {"event_ids": [1], "target_label": "завтра"}}).inline_keyboard[0][0].text == "↪️ Перенести на завтра"
     reminder = notifications.keyboard_for({"kind": "reminder", "id": 3, "event_id": 5, "url": None})
     assert "rd:5" in callback_data(reminder)
+
+
+def test_evening_and_deadline_notifications():
+    evening = notifications.keyboard_for({"kind": "evening", "id": 2**31, "payload": {"event_ids": [1, 2], "target_label": "завтра"}})
+    data = callback_data(evening)
+    assert data[0] == f"ci:{2**31}:move" and "ag:tomorrow" in data
+    assert all(len(item.encode()) <= 64 for item in data)
+    assert callback_data(notifications.keyboard_for({"kind": "evening", "id": 4, "payload": {"event_ids": []}}))[0] == "ag:tomorrow"
+    deadline = notifications.keyboard_for({"kind": "deadline", "id": 3, "event_id": 5, "url": "https://dayla.example/app/events/5"})
+    assert callback_data(deadline) == ["rd:5"]
+
+
+def test_settings_keyboard_has_evening_and_deadlines():
+    values = {"enabled": True, "lead_times": [15], "daily_digest_enabled": False, "evening_enabled": True, "deadline_enabled": False}
+    data = callback_data(keyboards.settings_keyboard(values, None))
+    assert "rs:evening" in data and "rs:deadline" in data
+    text = messages.reminder_settings(
+        "a@b.c",
+        {**values, "daily_digest_time": "09:00:00", "evening_time": "21:00:00", "quiet_hours_enabled": False, "quiet_hours_start": "23:00", "quiet_hours_end": "08:00"},
+    )
+    assert "Итоги дня: в 21:00" in text and "Дедлайны: выключены" in text
+
+
+def test_day_text_names_the_weekday():
+    today = datetime(2026, 10, 7).date()
+    assert messages.day_text(today, today) == "Сегодня, среда, 7 октября"
+    assert messages.day_text(today + timedelta(days=1), today) == "Завтра, четверг, 8 октября"
+    assert messages.day_text(today + timedelta(days=2), today) == "Пятница, 9 октября"
+
+
+async def test_change_proposal_and_result(backend):
+    change = event(event_id=7, before={"title": "Встреча <с> Анной", "date": NOW.date().isoformat(), "time": "10:00", "end_time": None, "end_date": None}, deadline=f"{TOMORROW.date().isoformat()}T18:00")
+    reply = {"kind": "proposal", "draft_id": 42, "events": [change], "answer": None, "note": None}
+    message = fake_message()
+    await chat.deliver(message, reply)
+    text = message.answer.call_args.args[0]
+    assert_telegram_html(text)
+    assert "Проверьте изменение" in text and "Было: сегодня 10:00" in text and "Дедлайн: завтра 18:00" in text
+    assert message.answer.call_args.kwargs["reply_markup"].inline_keyboard[0][0].text == "✅ Сохранить"
+
+    backend.draft_confirm = AsyncMock(return_value={"kind": "updated", "events": [event()], "event_ids": []})
+    callback = fake_callback("dr:42:ok")
+    await chat.draft_action(callback)
+    assert "Изменила" in callback.message.edit_text.call_args.args[0]
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    assert markup is None or not any(data.startswith("undo:") for data in callback_data(markup))  # no undo for a change
+    callback.answer.assert_awaited_with("Изменено ✓")
+
+
+async def test_delete_proposal_and_confirmation(backend):
+    reply = {"kind": "delete_proposal", "draft_id": 42, "count": 12, "title": "все задачи", "events": [event()] * 10, "message_id": 5}
+    message = fake_message()
+    await chat.deliver(message, reply)
+    text = message.answer.call_args.args[0]
+    assert_telegram_html(text)
+    assert "Удалить 12 задач?" in text and "ещё 2" in text
+    assert callback_data(message.answer.call_args.kwargs["reply_markup"]) == ["dr:42:ok", "dr:42:no"]
+
+    backend.draft_confirm = AsyncMock(return_value={"kind": "deleted", "count": 12, "text": "Удалила 12 задач."})
+    callback = fake_callback("dr:42:ok")
+    await chat.draft_action(callback)
+    assert "Удалила 12 задач" in callback.message.edit_text.call_args.args[0]
+    callback.answer.assert_awaited_with("Удалено ✓")
+
+
+async def test_answers_can_be_rated(backend):
+    message = fake_message()
+    await chat.deliver(message, {"kind": "answer", "text": "Привет", "message_id": 2**31})
+    markup = message.answer.call_args.kwargs["reply_markup"]
+    assert callback_data(markup) == [f"rt:{2**31}:1", f"rt:{2**31}:-1"]
+    assert all(len(data.encode()) <= 64 for data in callback_data(markup))
+
+    backend.rate = AsyncMock(return_value={"id": 9, "rating": -1})
+    callback = fake_callback("rt:9:-1", text="💬 Привет")
+    callback.message.reply_markup = keyboards.with_rating(None, 9)
+    await chat.rate(callback)
+    backend.rate.assert_awaited_with(100, 9, -1)
+    texts = [button.text for row in callback.message.edit_reply_markup.call_args.kwargs["reply_markup"].inline_keyboard for button in row]
+    assert texts == ["👍", "👎 ✓"]
+
+    done = fake_message()
+    await chat.deliver(done, {"kind": "completed", "text": "Отметила выполненными: 1 ✓", "events": [event()], "message_id": 3})
+    assert_telegram_html(done.answer.call_args.args[0])
+
+
+async def test_shared_commands_render_like_the_web_chat(backend):
+    replies = {
+        "stats": {"kind": "stats", "today": {"date": NOW.date().isoformat(), "total": 2, "done": 1, "percent": 50}, "days": [], "total": 2, "done": 1, "percent": 50, "streak": 2, "best_streak": 4, "message_id": 1},
+        "help": {"kind": "help", "sections": [{"title": "Планировать", "examples": ["Созвон <завтра>"]}]},
+        "advice": {"kind": "advice", "items": [{"kind": "warning", "title": "Скоро дедлайн", "text": "Отчёт"}, {"kind": "info", "title": "Окно", "text": "15:00"}], "message_id": 2},
+        "reminders": {"kind": "reminders", "settings": {"enabled": True, "lead_times": [15], "daily_digest_enabled": False, "daily_digest_time": "09:00:00", "evening_enabled": True, "evening_time": "21:00:00", "deadline_enabled": True, "quiet_hours_enabled": False, "quiet_hours_start": "23:00:00", "quiet_hours_end": "08:00:00"}},
+        "mark": {"kind": "agenda", "scope": "today", "title": "Сегодня", "mark": True, "days": [{"events": [event()]}]},
+        "topic": {"kind": "topic", "title": "Скоро дедлайн", "text": "Отчёт до пятницы"},
+    }
+    for name, reply in replies.items():
+        message = fake_message()
+        await chat.deliver(message, reply)
+        assert_telegram_html(message.answer.call_args.args[0])
+        markup = message.answer.call_args.kwargs.get("reply_markup")
+        data = callback_data(markup) if markup else []
+        if name == "advice":
+            assert data[:2] == ["adv:0", "adv:1"] and "rt:2:1" in data
+        if name == "mark":
+            assert data[0] == "dt:7:today:1"
+        if name == "reminders":
+            assert "rs:evening" in data
+        if name == "topic":
+            assert data == ["qr:0", "qr:1", "qr:2"]
+        if name == "help":
+            assert "Созвон &lt;завтра&gt;" in message.answer.call_args.args[0]
+
+
+async def test_discuss_advice_and_quick_reply(backend):
+    backend.topic = AsyncMock(return_value={"kind": "topic", "title": "Скоро дедлайн", "text": "Отчёт"})
+    callback = fake_callback("adv:1", text="💡 Советы на сегодня")
+    await chat.discuss_advice(callback)
+    backend.topic.assert_awaited_with(100, 1)
+    assert "Обсуждаем" in callback.message.answer.call_args.args[0]
+
+    backend.chat = AsyncMock(return_value={"kind": "answer", "text": "Вот план", "message_id": 3})
+    callback = fake_callback("qr:1", text="💡 Обсуждаем")
+    await chat.quick_reply(callback)
+    backend.chat.assert_awaited_with(100, "Помоги перепланировать")
+    assert "Вот план" in callback.message.answer.call_args.args[0]

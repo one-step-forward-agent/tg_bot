@@ -6,7 +6,7 @@ from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, Teleg
 from aiogram.types import CallbackQuery, Message
 
 from bot.config import settings
-from bot.keyboards import checkin_keyboard, digest_keyboard, reminder_keyboard
+from bot.keyboards import checkin_keyboard, deadline_keyboard, digest_keyboard, evening_keyboard, reminder_keyboard
 from bot.services.backend import BackendError, backend
 from bot.templates import messages
 
@@ -21,6 +21,10 @@ def keyboard_for(item: dict):
         return digest_keyboard()
     if item.get("kind") == "checkin":
         return checkin_keyboard(item["id"], item.get("payload"))
+    if item.get("kind") == "evening":
+        return evening_keyboard(item["id"], item.get("payload"))
+    if item.get("kind") == "deadline":
+        return deadline_keyboard(item.get("event_id"), item.get("url"))
     return None
 
 
