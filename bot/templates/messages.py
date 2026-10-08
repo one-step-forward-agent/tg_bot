@@ -261,6 +261,30 @@ def checkin_result(result: dict) -> str:
     return "👍 Отлично, тогда не отвлекаю. Отмечайте выполненное — так статистика будет точнее."
 
 
+def move_list(reply: dict) -> str:
+    title = reply.get("title") or "План"
+    events = [event for day in reply.get("days") or [] for event in day["events"] if not event.get("completed")]
+    if not events:
+        return f"↪️ <b>{esc(title)}</b>\n\nПереносить нечего — невыполненных задач нет 🌿"
+    return f"↪️ <b>Что перенести? · {esc(title)}</b>\nНажмите на задачу."
+
+
+def move_ask(event: dict) -> str:
+    start = datetime.fromisoformat(event["start"])
+    today = datetime.now(start.tzinfo).date()
+    when = "без времени" if event.get("all_day") else f"в {start:%H:%M}"
+    keep = "" if event.get("all_day") else " Время сохранится."
+    return f"↪️ Куда перенести <b>«{esc(event['title'])}»</b>?\nСейчас: {esc(day_text(start.date(), today).lower())}, {when}.{keep}"
+
+
+def move_days(event: dict) -> str:
+    return f"📅 Выберите день для <b>«{esc(event['title'])}»</b> — или напишите дату."
+
+
+def moved(reply: dict) -> str:
+    return "\n\n".join([f"↪️ <b>{esc(reply.get('text') or 'Перенесла')}</b>", *[event_card(event) for event in reply.get("events") or []]])
+
+
 def created(reply: dict) -> str:
     events = reply["events"]
     if reply.get("kind") == "updated":

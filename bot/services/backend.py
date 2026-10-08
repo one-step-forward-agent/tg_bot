@@ -108,6 +108,15 @@ class DaylaBackend:
             {"ok": ok, "error": error, "chat_unreachable": chat_unreachable},
         )
 
+    async def event(self, chat_id: int, event_id: int) -> dict:
+        return await self._request("GET", f"/internal/bot/chat/{chat_id}/events/{event_id}")
+
+    async def move(self, chat_id: int, event_id: int, day: str) -> dict:
+        return await self._request("POST", f"/internal/bot/chat/{chat_id}/events/{event_id}/move", {"date": day})
+
+    async def move_date(self, chat_id: int, event_id: int) -> dict:
+        return await self._request("POST", f"/internal/bot/chat/{chat_id}/events/{event_id}/move-date")
+
     async def snooze(self, notification_id: int, chat_id: int, minutes: int) -> None:
         await self._request("POST", f"/internal/bot/notifications/{notification_id}/snooze", {"chat_id": chat_id, "minutes": minutes})
 

@@ -1,11 +1,26 @@
+from datetime import datetime
+
 from aiogram import F, Router
 from aiogram.enums import ChatType
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, ForceReply, Message
 
 from bot.handlers.account import report
-from bot.keyboards import MENU_DONE, MENU_STATS, MENU_TODAY, MENU_TOMORROW, MENU_WEEK, SCOPES, agenda_keyboard, done_keyboard
+from bot.keyboards import (
+    MENU_DONE,
+    MENU_STATS,
+    MENU_TODAY,
+    MENU_TOMORROW,
+    MENU_WEEK,
+    SCOPES,
+    agenda_keyboard,
+    done_keyboard,
+    move_days_keyboard,
+    move_list_keyboard,
+    move_options_keyboard,
+    moved_keyboard,
+)
 from bot.services import site
 from bot.services.backend import BackendError, backend
 from bot.templates import messages
@@ -144,4 +159,104 @@ async def switch(callback: CallbackQuery) -> None:
         await callback.answer("Telegram не подключён к Dayla" if error.not_linked else messages.backend_unavailable(), show_alert=True)
         return
     await replace_or_answer(callback, text, keyboard)
+    await callback.answer()
+
+
+# ---------- "↪️ Перенести": choose a task, then the day ----------
+
+GONE = "Задача не найдена — возможно, её удалили"
+
+
+async def _edit(callback: CallbackQuery, text: str, keyboard) -> None:
+    try:
+        await callback.message.edit_text(text, reply_markup=keyboard)
+    except TelegramBadRequest:
+        pass
+
+
+def _failed(error: BackendError) -> str:
+    if error.not_linked:
+        return "Telegram не подключён к Dayla"
+    return GONE if error.status == 410 else messages.backend_unavailable()
+
+
+@router.callback_query(F.data.startswith("mv:"))
+async def move_list(callback: CallbackQuery) -> None:
+    if not isinstance(callback.message, Message):
+        await callback.answer("Это сообщение устарело — откройте план ещё раз", show_alert=True)
+        return
+    scope = callback.data.split(":", 1)[1]
+    if scope not in SCOPES:
+        await callback.answer()
+        return
+    try:
+        reply = await backend.agenda(callback.message.chat.id, scope)
+    except BackendError as error:
+        await callback.answer(_failed(error), show_alert=True)
+        return
+    await replace_or_answer(callback, messages.move_list(reply), move_list_keyboard(reply, scope))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("mp:") | F.data.startswith("mo:"))
+async def move_choose(callback: CallbackQuery) -> None:
+    """"mp" offers today, tomorrow, the day after tomorrow; "mo" — two weeks of days and a typed date."""
+    if not isinstance(callback.message, Message):
+        await callback.answer()
+        return
+    try:
+        kind, event_id, scope = callback.data.split(":")
+        event = await backend.event(callback.message.chat.id, int(event_id))
+    except ValueError:
+        await callback.answer()
+        return
+    except BackendError as error:
+        await callback.answer(GONE if error.status == 404 else _failed(error), show_alert=True)
+        return
+    scope = scope if scope in SCOPES else "today"
+    if kind == "mp":
+        await _edit(callback, messages.move_ask(event), move_options_keyboard(event, scope))
+    else:
+        await _edit(callback, messages.move_days(event), move_days_keyboard(event, scope))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("mt:"))
+async def move_to(callback: CallbackQuery) -> None:
+    """Move to the chosen day at once — the same button under the result moves it back."""
+    if not isinstance(callback.message, Message):
+        await callback.answer()
+        return
+    try:
+        _, event_id, day = callback.data.split(":")
+        target = datetime.strptime(day, "%Y%m%d").date()
+        reply = await backend.move(callback.message.chat.id, int(event_id), target.isoformat())
+    except ValueError:
+        await callback.answer()
+        return
+    except BackendError as error:
+        await callback.answer(_failed(error), show_alert=True)
+        return
+    if reply.get("kind") != "updated":
+        await callback.answer(reply.get("text") or "Готово", show_alert=True)
+        return
+    await replace_or_answer(callback, messages.moved(reply), moved_keyboard(reply))
+    await callback.answer("Перенесла ✓")
+
+
+@router.callback_query(F.data.startswith("mw:"))
+async def move_typed(callback: CallbackQuery) -> None:
+    """"✍️ Написать дату": the next message is the new day; Dayla shows the change for confirmation."""
+    if not isinstance(callback.message, Message):
+        await callback.answer()
+        return
+    try:
+        data = await backend.move_date(callback.message.chat.id, int(callback.data.split(":")[1]))
+    except (ValueError, IndexError):
+        await callback.answer()
+        return
+    except BackendError as error:
+        await callback.answer(_failed(error), show_alert=True)
+        return
+    await callback.message.answer(messages.edit_prompt(data), reply_markup=ForceReply(input_field_placeholder=data["prompt"][:64]))
     await callback.answer()

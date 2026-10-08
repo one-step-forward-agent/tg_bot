@@ -1,3 +1,5 @@
+from datetime import date, datetime, timedelta
+
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
 
 from bot.templates.messages import LEAD_PRESETS, format_lead
@@ -82,7 +84,10 @@ def created_keyboard(event_ids: list[int], events: list[dict], app_url: str | No
 def agenda_keyboard(current: str | None, app_url: str | None) -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton(text=f"• {label} •" if scope == current else label, callback_data=f"ag:{scope}") for scope, label in SCOPES.items()]]
     if current in SCOPES:
-        rows.append([InlineKeyboardButton(text="✅ Отметить выполненные", callback_data=f"dn:{current}")])
+        rows.append([
+            InlineKeyboardButton(text="✅ Отметить выполненные", callback_data=f"dn:{current}"),
+            InlineKeyboardButton(text="↪️ Перенести", callback_data=f"mv:{current}"),
+        ])
     url = public_url(app_url)
     if url:
         rows.append([InlineKeyboardButton(text="↗️ Календарь в Dayla", url=f"{url}/app/calendar")])
@@ -253,3 +258,71 @@ def checkin_keyboard(notification_id: int, payload: dict | None) -> InlineKeyboa
         first.append(InlineKeyboardButton(text=f"↪️ Перенести на {payload.get('target_label') or 'другой день'}", callback_data=f"ci:{notification_id}:move"))
     first.append(InlineKeyboardButton(text="👍 Успеваю", callback_data=f"ci:{notification_id}:ok"))
     return InlineKeyboardMarkup(inline_keyboard=[first, [InlineKeyboardButton(text="✅ Отметить выполненные", callback_data="dn:today")]])
+
+
+# ---------- moving a task: choose it, then "Завтра", "Послезавтра" or another day ----------
+
+WEEKDAYS_SHORT = ("пн", "вт", "ср", "чт", "пт", "сб", "вс")
+MOVE_PICKER_DAYS = 14
+
+
+def event_day(event: dict) -> tuple[date, date]:
+    """The task's day and today, both in the user's time zone (the offset of the task's start)."""
+    start = datetime.fromisoformat(event["start"])
+    return start.date(), datetime.now(start.tzinfo).date()
+
+
+def move_to(event_id: int, day: date) -> str:
+    return f"mt:{event_id}:{day:%Y%m%d}"
+
+
+def move_list_keyboard(reply: dict, scope: str) -> InlineKeyboardMarkup:
+    rows = []
+    for day in reply.get("days") or []:
+        for event in day["events"]:
+            if event.get("completed") or len(rows) >= 30:
+                continue
+            when = "без времени" if event.get("all_day") else event["start"][11:16]
+            if scope == "week":
+                when = f"{event['start'][8:10]}.{event['start'][5:7]} {when}"
+            rows.append([InlineKeyboardButton(text=f"↪️ {when} · {event['title']}"[:60], callback_data=f"mp:{event['id']}:{scope}")])
+    rows.append([InlineKeyboardButton(text="← К плану", callback_data=f"ag:{scope}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def move_options_keyboard(event: dict, scope: str) -> InlineKeyboardMarkup:
+    current, today = event_day(event)
+    options = [("Сегодня", today), ("Завтра", today + timedelta(days=1)), ("Послезавтра", today + timedelta(days=2))]
+    quick = [
+        InlineKeyboardButton(text=f"{label}, {WEEKDAYS_SHORT[day.weekday()]} {day.day}", callback_data=move_to(event["id"], day))
+        for label, day in options
+        if day != current
+    ]
+    rows = [quick] if quick else []
+    rows.append([InlineKeyboardButton(text="📅 Другой день", callback_data=f"mo:{event['id']}:{scope}")])
+    rows.append([InlineKeyboardButton(text="← Назад", callback_data=f"mv:{scope}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def move_days_keyboard(event: dict, scope: str) -> InlineKeyboardMarkup:
+    current, today = event_day(event)
+    days = [today + timedelta(days=offset) for offset in range(3, 3 + MOVE_PICKER_DAYS)]
+    buttons = [
+        InlineKeyboardButton(text=f"{WEEKDAYS_SHORT[day.weekday()]} {day:%d.%m}", callback_data=move_to(event["id"], day))
+        for day in days
+        if day != current
+    ]
+    rows = [buttons[start : start + 4] for start in range(0, len(buttons), 4)]
+    rows.append([InlineKeyboardButton(text="✍️ Написать дату", callback_data=f"mw:{event['id']}")])
+    rows.append([InlineKeyboardButton(text="← Назад", callback_data=f"mp:{event['id']}:{scope}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def moved_keyboard(reply: dict) -> InlineKeyboardMarkup:
+    moved = reply.get("moved") or {}
+    rows = []
+    if moved.get("event_id") and moved.get("from"):
+        back = date.fromisoformat(moved["from"])
+        rows.append([InlineKeyboardButton(text=f"↩️ Вернуть на {moved.get('from_label') or back.strftime('%d.%m')}"[:60], callback_data=move_to(moved["event_id"], back))])
+    rows.append([InlineKeyboardButton(text="📅 Сегодня", callback_data="ag:today"), InlineKeyboardButton(text="🗓 Завтра", callback_data="ag:tomorrow")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
