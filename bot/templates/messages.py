@@ -455,11 +455,11 @@ def link_failed() -> str:
 
 
 def backend_unavailable() -> str:
-    return "⏳ Временная ошибка — попробуйте ещё раз через минуту."
+    return "⏳ Ошибка сервера — попробуйте ещё раз через минуту."
 
 
 def assistant_unavailable() -> str:
-    return "⏳ Временная ошибка — попробуйте ещё раз через минуту. План на день можно открыть через /today."
+    return "⏳ Ошибка сервера — попробуйте ещё раз через минуту. План на день можно открыть через /today."
 
 
 def account_unlinked() -> str:
@@ -487,7 +487,7 @@ def unsupported_message() -> str:
 
 
 def processing_error() -> str:
-    return "⏳ Временная ошибка — попробуйте ещё раз через минуту."
+    return "⏳ Ошибка сервера — попробуйте ещё раз через минуту."
 
 
 def snoozed(minutes: int) -> str:
