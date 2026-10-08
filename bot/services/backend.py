@@ -77,8 +77,8 @@ class DaylaBackend:
     async def draft_remove(self, chat_id: int, draft_id: int, index: int) -> dict:
         return await self._request("POST", f"/internal/bot/chat/{chat_id}/drafts/{draft_id}/remove", {"index": index})
 
-    async def draft_target(self, chat_id: int, draft_id: int, target: str) -> dict:
-        return await self._request("POST", f"/internal/bot/chat/{chat_id}/drafts/{draft_id}/target", {"target": target})
+    async def draft_calendars(self, chat_id: int, draft_id: int, calendars: list[str]) -> dict:
+        return await self._request("POST", f"/internal/bot/chat/{chat_id}/drafts/{draft_id}/calendars", {"calendars": calendars})
 
     async def draft_confirm(self, chat_id: int, draft_id: int) -> dict:
         return await self._request("POST", f"/internal/bot/chat/{chat_id}/drafts/{draft_id}/confirm", timeout=ASSISTANT_TIMEOUT)

@@ -314,13 +314,22 @@ async def draft_action(callback: CallbackQuery) -> None:
                 pass
             await callback.message.answer(messages.edit_prompt(data), reply_markup=ForceReply(input_field_placeholder=data["prompt"][:64]))
             await callback.answer()
-        elif action == "to" and len(parts) > 3:
-            await _show_proposal(callback, await backend.draft_target(chat_id, draft_id, parts[3]))
-            await callback.answer("Запомню этот выбор")
         elif action == "to":
             reply = await backend.draft(chat_id, draft_id)
-            await callback.message.edit_reply_markup(reply_markup=targets_keyboard(draft_id, reply.get("targets") or [], reply.get("target")))
-            await callback.answer("Куда добавить задачи?")
+            if len(parts) > 3:
+                chosen = reply.get("calendars") or []
+                slug = parts[3]
+                reply = await backend.draft_calendars(chat_id, draft_id, [item for item in chosen if item != slug] if slug in chosen else [*chosen, slug])
+            if reply.get("kind") != "proposal":
+                await _show_proposal(callback, reply)
+                await callback.answer()
+                return
+            # The checkboxes stay open for more presses; "Готово" returns to the proposal buttons
+            try:
+                await callback.message.edit_text(messages.proposal(reply), reply_markup=targets_keyboard(draft_id, reply.get("targets") or [], reply.get("calendars") or []))
+            except TelegramBadRequest:
+                pass
+            await callback.answer("Запомню этот выбор" if len(parts) > 3 else "Куда ещё добавить задачи?")
         elif action == "rm":
             await _show_proposal(callback, await backend.draft_remove(chat_id, draft_id, int(parts[3])))
             await callback.answer("Убрано")

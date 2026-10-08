@@ -218,18 +218,13 @@ def proposal_keyboard(draft_id: int, count: int, change: bool = False, target: s
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def targets_keyboard(draft_id: int, targets: list[dict], current: str | None) -> InlineKeyboardMarkup:
-    """The calendars a draft can go to; the current one is marked."""
+def targets_keyboard(draft_id: int, targets: list[dict], chosen: list[str]) -> InlineKeyboardMarkup:
+    """Checkboxes for the connected calendars: a press ticks or unticks one; tasks are always in Dayla."""
     rows = [
-        [
-            InlineKeyboardButton(
-                text=("✅ " if option["slug"] == current else "") + (option["title"] if option["slug"] == "dayla" else f"Dayla и {option['title']}"),
-                callback_data=f"dr:{draft_id}:to:{option['slug']}",
-            )
-        ]
+        [InlineKeyboardButton(text=("☑️ " if option["slug"] in chosen else "⬜ ") + option["title"], callback_data=f"dr:{draft_id}:to:{option['slug']}")]
         for option in targets
     ]
-    rows.append([InlineKeyboardButton(text="← Назад", callback_data=f"dr:{draft_id}:back")])
+    rows.append([InlineKeyboardButton(text="✓ Готово", callback_data=f"dr:{draft_id}:back")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 

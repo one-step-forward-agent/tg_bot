@@ -213,17 +213,13 @@ def proposal(reply: dict) -> str:
     return "\n\n".join(parts)
 
 
-def target_label(option: dict) -> str:
-    return option["title"] if option["slug"] == "dayla" else f"Dayla и {option['title']}"
-
-
 def target_title(reply: dict) -> str | None:
-    """Where the new tasks of a proposal go, when there is a choice (a calendar is connected)."""
+    """Where the new tasks of a proposal go — Dayla and the ticked calendars — when a calendar is connected."""
     targets = reply.get("targets") or []
-    if len(targets) < 2 or any(event.get("event_id") for event in reply["events"]):
+    if not targets or any(event.get("event_id") for event in reply["events"]):
         return None
-    current = next((option for option in targets if option["slug"] == reply.get("target")), targets[0])
-    return target_label(current)
+    chosen = reply.get("calendars") or []
+    return ", ".join(["Dayla", *(option["title"] for option in targets if option["slug"] in chosen)])
 
 
 def edit_prompt(data: dict) -> str:
