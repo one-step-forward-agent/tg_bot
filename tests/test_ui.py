@@ -352,3 +352,38 @@ def test_model_markdown_becomes_telegram_html():
     assert "**" not in crossed
     assert messages.rich("2*3 = 6, файл_имя_тест") == "2*3 = 6, файл_имя_тест"
     assert_telegram_html(messages.answer("**Готово** — вот план"))
+
+
+TARGETS = [{"slug": "dayla", "title": "Только Dayla"}, {"slug": "yandex", "title": "Яндекс Календарь"}]
+
+
+async def test_proposal_shows_the_end_and_where_tasks_go(backend):
+    many = messages.proposal(proposal_reply(count=2))
+    assert "15:00–16:00" in many and "Куда" not in many
+
+    reply = proposal_reply(targets=TARGETS, target="yandex")
+    message = fake_message()
+    await chat.deliver(message, reply)
+    text = message.answer.call_args.args[0]
+    assert_telegram_html(text)
+    assert "Куда: <b>Dayla и Яндекс Календарь</b>" in text
+    assert "dr:42:to" in callback_data(message.answer.call_args.kwargs["reply_markup"])
+
+    backend.draft = AsyncMock(return_value=reply)
+    callback = fake_callback("dr:42:to")
+    await chat.draft_action(callback)
+    markup = callback.message.edit_reply_markup.call_args.kwargs["reply_markup"]
+    assert callback_data(markup) == ["dr:42:to:dayla", "dr:42:to:yandex", "dr:42:back"]
+    assert markup.inline_keyboard[1][0].text == "✅ Dayla и Яндекс Календарь"
+
+    backend.draft_target = AsyncMock(return_value={**reply, "target": "dayla"})
+    callback = fake_callback("dr:42:to:dayla")
+    await chat.draft_action(callback)
+    backend.draft_target.assert_awaited_with(100, 42, "dayla")
+    assert "Куда: <b>Только Dayla</b>" in callback.message.edit_text.call_args.args[0]
+
+
+def test_created_says_where_the_tasks_went():
+    text = messages.created({"kind": "created", "events": [event()], "event_ids": [7], "note": "Добавлено в Яндекс Календарь"})
+    assert_telegram_html(text)
+    assert "Добавлено в Яндекс Календарь" in text

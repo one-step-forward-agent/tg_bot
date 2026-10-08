@@ -171,9 +171,8 @@ def event_card(event: dict) -> str:
 def proposal_line(number: int, event: dict) -> str:
     start = datetime.fromisoformat(event["start"])
     today = datetime.now(start.tzinfo).date()
-    when = "без времени" if event.get("all_day") else f"{start:%H:%M}"
-    if not event.get("all_day") and event.get("end_time"):
-        when += f"–{event['end_time']}"
+    # The end is shown even when it was not said: the task gets an hour, and the user sees that
+    when = "без времени" if event.get("all_day") else f"{start:%H:%M}–{datetime.fromisoformat(event['end']):%H:%M}"
     repeat = f" · 🔁 {esc(event['recurrence'])}" if event.get("recurrence") else ""
     if event.get("end_date") and event["end_date"] > event["start"][:10]:
         repeat += f" · до {short_day(date.fromisoformat(event['end_date']), today)}"
@@ -202,6 +201,9 @@ def proposal(reply: dict) -> str:
             lines.append(line)
         body = "\n".join(lines)
     parts = [header, body]
+    target = target_title(reply)
+    if target:
+        parts.append(f"🗂 Куда: <b>{esc(target)}</b>")
     if reply.get("answer"):
         parts.append(f"💬 {rich(reply['answer'])}")
     if any(event.get("event_id") for event in events):
@@ -209,6 +211,19 @@ def proposal(reply: dict) -> str:
     else:
         parts.append("Всё верно? Нажмите <b>«Добавить»</b> или поправьте название, дату и время.")
     return "\n\n".join(parts)
+
+
+def target_label(option: dict) -> str:
+    return option["title"] if option["slug"] == "dayla" else f"Dayla и {option['title']}"
+
+
+def target_title(reply: dict) -> str | None:
+    """Where the new tasks of a proposal go, when there is a choice (a calendar is connected)."""
+    targets = reply.get("targets") or []
+    if len(targets) < 2 or any(event.get("event_id") for event in reply["events"]):
+        return None
+    current = next((option for option in targets if option["slug"] == reply.get("target")), targets[0])
+    return target_label(current)
 
 
 def edit_prompt(data: dict) -> str:
@@ -294,6 +309,8 @@ def created(reply: dict) -> str:
     else:
         header = f"✨ <b>Добавила {len(events)} {plural(len(events), 'событие', 'события', 'событий')}</b>"
     parts = [header, *[event_card(event) for event in events]]
+    if reply.get("note"):
+        parts.append(f"🗂 {esc(reply['note'])}")
     if reply.get("answer"):
         parts.append(f"💬 {rich(reply['answer'])}")
     return "\n\n".join(parts)

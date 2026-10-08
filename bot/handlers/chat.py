@@ -25,6 +25,7 @@ from bot.keyboards import (
     proposal_item_keyboard,
     proposal_keyboard,
     rated,
+    targets_keyboard,
     updated_keyboard,
     with_rating,
 )
@@ -47,7 +48,7 @@ async def deliver(message: Message, reply: dict) -> None:
     kind = reply.get("kind")
     rating = reply.get("message_id")
     if kind == "proposal":
-        await message.answer(messages.proposal(reply), reply_markup=proposal_keyboard(reply["draft_id"], len(reply["events"]), is_change(reply)))
+        await message.answer(messages.proposal(reply), reply_markup=proposal_markup(reply))
     elif kind == "delete_proposal":
         await message.answer(messages.delete_proposal(reply), reply_markup=delete_keyboard(reply["draft_id"], reply["count"]))
     elif kind in ("created", "updated"):
@@ -76,6 +77,10 @@ async def deliver(message: Message, reply: dict) -> None:
         await message.answer(messages.answer(reply["text"]))
     else:
         await message.answer(messages.nothing(), reply_markup=with_rating(None, rating))
+
+
+def proposal_markup(reply: dict):
+    return proposal_keyboard(reply["draft_id"], len(reply["events"]), is_change(reply), messages.target_title(reply))
 
 
 def is_change(reply: dict) -> bool:
@@ -260,7 +265,7 @@ async def undo(callback: CallbackQuery) -> None:
 
 async def _show_proposal(callback: CallbackQuery, reply: dict) -> None:
     if reply.get("kind") == "proposal":
-        text, keyboard = messages.proposal(reply), proposal_keyboard(reply["draft_id"], len(reply["events"]), is_change(reply))
+        text, keyboard = messages.proposal(reply), proposal_markup(reply)
     else:
         text, keyboard = messages.proposal_closed(reply.get("text") or "Черновик закрыт"), None
     try:
@@ -309,6 +314,13 @@ async def draft_action(callback: CallbackQuery) -> None:
                 pass
             await callback.message.answer(messages.edit_prompt(data), reply_markup=ForceReply(input_field_placeholder=data["prompt"][:64]))
             await callback.answer()
+        elif action == "to" and len(parts) > 3:
+            await _show_proposal(callback, await backend.draft_target(chat_id, draft_id, parts[3]))
+            await callback.answer("Запомню этот выбор")
+        elif action == "to":
+            reply = await backend.draft(chat_id, draft_id)
+            await callback.message.edit_reply_markup(reply_markup=targets_keyboard(draft_id, reply.get("targets") or [], reply.get("target")))
+            await callback.answer("Куда добавить задачи?")
         elif action == "rm":
             await _show_proposal(callback, await backend.draft_remove(chat_id, draft_id, int(parts[3])))
             await callback.answer("Убрано")
@@ -323,5 +335,7 @@ async def draft_action(callback: CallbackQuery) -> None:
             except TelegramBadRequest:
                 pass
             await callback.answer("Этот черновик уже обработан", show_alert=True)
+        elif error.status == 422:
+            await callback.answer("Этот календарь больше не подключён", show_alert=True)
         else:
             await callback.answer("Telegram не подключён к Dayla" if error.not_linked else messages.backend_unavailable(), show_alert=True)

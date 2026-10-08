@@ -201,7 +201,8 @@ def settings_keyboard(values: dict, app_url: str | None) -> InlineKeyboardMarkup
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def proposal_keyboard(draft_id: int, count: int, change: bool = False) -> InlineKeyboardMarkup:
+def proposal_keyboard(draft_id: int, count: int, change: bool = False, target: str | None = None) -> InlineKeyboardMarkup:
+    """target: where the tasks go ("Dayla и Google Calendar") when there is a choice; adds the button to change it."""
     add = "✅ Сохранить" if change else "✅ Добавить" if count == 1 else f"✅ Добавить все ({count})"
     rows = [[
         InlineKeyboardButton(text=add, callback_data=f"dr:{draft_id}:ok"),
@@ -212,6 +213,23 @@ def proposal_keyboard(draft_id: int, count: int, change: bool = False) -> Inline
     else:
         numbers = [InlineKeyboardButton(text=f"✏️ {index + 1}", callback_data=f"dr:{draft_id}:sel:{index}") for index in range(min(count, 20))]
         rows += [numbers[start : start + 5] for start in range(0, len(numbers), 5)]
+    if target:
+        rows.append([InlineKeyboardButton(text=f"🗂 Куда: {target}", callback_data=f"dr:{draft_id}:to")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def targets_keyboard(draft_id: int, targets: list[dict], current: str | None) -> InlineKeyboardMarkup:
+    """The calendars a draft can go to; the current one is marked."""
+    rows = [
+        [
+            InlineKeyboardButton(
+                text=("✅ " if option["slug"] == current else "") + (option["title"] if option["slug"] == "dayla" else f"Dayla и {option['title']}"),
+                callback_data=f"dr:{draft_id}:to:{option['slug']}",
+            )
+        ]
+        for option in targets
+    ]
+    rows.append([InlineKeyboardButton(text="← Назад", callback_data=f"dr:{draft_id}:back")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
