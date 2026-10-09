@@ -25,6 +25,7 @@ from bot.keyboards import (
     proposal_item_keyboard,
     proposal_keyboard,
     rated,
+    reminder_set_keyboard,
     targets_keyboard,
     updated_keyboard,
     with_rating,
@@ -67,6 +68,8 @@ async def deliver(message: Message, reply: dict) -> None:
         await message.answer(messages.advice(reply), reply_markup=advice_keyboard(len(reply.get("items") or []), rating))
     elif kind == "reminders":
         await message.answer(messages.reminder_settings(None, reply["settings"]), reply_markup=settings_keyboard(reply["settings"], app_url))
+    elif kind == "reminder":
+        await message.answer(messages.reminder_set(reply), reply_markup=with_rating(reminder_set_keyboard(reply.get("reminders") or []), rating))
     elif kind == "topic":
         await message.answer(messages.topic(reply), reply_markup=topic_keyboard())
     elif kind == "answer":
@@ -261,6 +264,27 @@ async def undo(callback: CallbackQuery) -> None:
     except TelegramBadRequest:
         await callback.message.edit_reply_markup(reply_markup=None)
     await callback.answer("Отменено" if deleted else "Уже удалено")
+
+
+@router.callback_query(F.data.startswith("rc:"))
+async def cancel_reminder(callback: CallbackQuery) -> None:
+    """"Отменить" under a reminder the assistant set."""
+    if not isinstance(callback.message, Message):
+        await callback.answer("Это сообщение устарело", show_alert=True)
+        return
+    try:
+        reply = await backend.cancel_reminder(callback.message.chat.id, int(callback.data.split(":")[1]))
+    except ValueError:
+        await callback.answer(messages.backend_unavailable(), show_alert=True)
+        return
+    except BackendError as error:
+        await callback.answer("Напоминание уже пришло или отменено" if error.status == 404 else messages.backend_unavailable(), show_alert=True)
+        return
+    try:
+        await callback.message.edit_text(f"<s>{callback.message.html_text}</s>\n\n{messages.reminder_cancelled(reply['text'])}", reply_markup=None)
+    except TelegramBadRequest:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer("Отменено")
 
 
 async def _show_proposal(callback: CallbackQuery, reply: dict) -> None:

@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 def keyboard_for(item: dict):
     if item.get("kind") == "reminder":
         return reminder_keyboard(item["id"], item.get("url"), item.get("event_id"))
+    if item.get("kind") == "custom":
+        # A reminder the user asked for ("напомни через 10 минут …"): it can be put off
+        return reminder_keyboard(item["id"], None)
     if item.get("kind") == "digest":
         return digest_keyboard()
     if item.get("kind") == "checkin":

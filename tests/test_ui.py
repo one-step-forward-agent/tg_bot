@@ -395,3 +395,38 @@ def test_created_says_where_the_tasks_went():
     text = messages.created({"kind": "created", "events": [event()], "event_ids": [7], "note": "Добавлено в Яндекс Календарь"})
     assert_telegram_html(text)
     assert "Добавлено в Яндекс Календарь" in text
+
+
+async def test_reminder_set_by_the_assistant_can_be_cancelled(backend):
+    reply = {"kind": "reminder", "text": "Напомню сегодня в 18:10: Помыть <посуду> 🔔", "reminders": [{"id": 31, "text": "Помыть <посуду>", "label": "сегодня в 18:10"}], "message_id": 4}
+    message = fake_message()
+    await chat.deliver(message, reply)
+    text = message.answer.call_args.args[0]
+    assert_telegram_html(text)
+    assert "Помыть &lt;посуду&gt;" in text
+    assert callback_data(message.answer.call_args.kwargs["reply_markup"])[0] == "rc:31"
+
+    backend.cancel_reminder = AsyncMock(return_value={"kind": "cancelled", "text": "Напоминание отменено: Помыть посуду"})
+    callback = fake_callback("rc:31", text)
+    await chat.cancel_reminder(callback)
+    backend.cancel_reminder.assert_awaited_once_with(100, 31)
+    assert "Напоминание отменено" in callback.message.edit_text.call_args.args[0]
+
+    backend.cancel_reminder = AsyncMock(side_effect=BackendError(404, "gone"))
+    callback = fake_callback("rc:31", text)
+    await chat.cancel_reminder(callback)
+    assert callback.answer.call_args.args[0] == "Напоминание уже пришло или отменено"
+
+
+async def test_custom_reminder_comes_with_snooze_buttons():
+    markup = notifications.keyboard_for({"id": 12, "kind": "custom", "event_id": None, "url": None})
+    assert callback_data(markup) == ["sn:12:10", "sn:12:60"]
+
+
+async def test_found_tasks_come_with_the_assistants_comment(backend):
+    reply = {"kind": "agenda", "title": "Найденные события", "answer": "Ближайшая — <завтра>", "days": [{"date": TOMORROW.date().isoformat(), "label": "Завтра", "events": [event()]}]}
+    message = fake_message()
+    await chat.deliver(message, reply)
+    text = message.answer.call_args.args[0]
+    assert_telegram_html(text)
+    assert text.startswith("💬 Ближайшая — &lt;завтра&gt;") and "Встреча &lt;с&gt; Анной" in text

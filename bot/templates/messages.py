@@ -323,6 +323,12 @@ def agenda_line(event: dict) -> str:
 
 
 def agenda(reply: dict) -> str:
+    """The found tasks; the assistant's comment on them, if any, goes first."""
+    body = agenda_body(reply)
+    return f"💬 {rich(reply['answer'])}\n\n{body}" if reply.get("answer") else body
+
+
+def agenda_body(reply: dict) -> str:
     days = reply.get("days") or []
     title = reply.get("title") or "План"
     count = sum(len(day["events"]) for day in days)
@@ -392,6 +398,14 @@ def completed(reply: dict) -> str:
     lines = [f"✅ <b>{esc(reply['text'])}</b>"]
     lines += [f"• <s>{esc(event['title'])}</s>" for event in reply["events"][:20]]
     return "\n".join(lines)
+
+
+def reminder_set(reply: dict) -> str:
+    return "\n".join(f"⏰ {esc(line)}" for line in (reply.get("text") or "").splitlines())
+
+
+def reminder_cancelled(text: str) -> str:
+    return f"🔕 <i>{esc(text)}</i>"
 
 
 def answer(text: str) -> str:

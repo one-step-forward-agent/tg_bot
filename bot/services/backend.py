@@ -68,6 +68,9 @@ class DaylaBackend:
     async def undo(self, chat_id: int, event_ids: list[int]) -> int:
         return (await self._request("POST", f"/internal/bot/chat/{chat_id}/undo", {"event_ids": event_ids}))["deleted"]
 
+    async def cancel_reminder(self, chat_id: int, reminder_id: int) -> dict:
+        return await self._request("POST", f"/internal/bot/chat/{chat_id}/reminders/{reminder_id}/cancel")
+
     async def draft(self, chat_id: int, draft_id: int) -> dict:
         return await self._request("GET", f"/internal/bot/chat/{chat_id}/drafts/{draft_id}")
 

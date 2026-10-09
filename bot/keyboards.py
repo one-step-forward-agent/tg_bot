@@ -107,6 +107,15 @@ def reminder_keyboard(notification_id: int, url: str | None, event_id: int | Non
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def reminder_set_keyboard(reminders: list[dict]) -> InlineKeyboardMarkup | None:
+    """"Отменить" under each reminder the assistant has just set."""
+    rows = [
+        [InlineKeyboardButton(text="🔕 Отменить" if len(reminders) == 1 else f"🔕 Отменить «{item['text'][:24]}»", callback_data=f"rc:{item['id']}")]
+        for item in reminders[:5]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
+
+
 def digest_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[[InlineKeyboardButton(text="📅 План на сегодня", callback_data="ag:today"), InlineKeyboardButton(text="📆 Неделя", callback_data="ag:week")]]
