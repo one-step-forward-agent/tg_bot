@@ -104,6 +104,9 @@ async def ask(message: Message, text: str) -> None:
     except BackendError as error:
         if error.status == 503 and "Assistant" in error.detail:
             await message.answer(messages.assistant_unavailable())
+        elif error.status == 429:
+            # The backend says which limit was reached and when the assistant answers again
+            await message.answer(error.detail)
         else:
             await report(message, error)
         return
