@@ -7,7 +7,7 @@ from aiogram.enums import ParseMode
 from aiogram.types import BotCommand, LinkPreviewOptions
 
 from bot.config import settings
-from bot.handlers import account, agenda, chat, notifications
+from bot.handlers import account, agenda, chat, group, notifications
 from bot.services.backend import backend
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
@@ -33,11 +33,12 @@ async def main() -> None:
         default=DefaultBotProperties(parse_mode=ParseMode.HTML, link_preview=LinkPreviewOptions(is_disabled=True)),
     )
     dispatcher = Dispatcher()
-    dispatcher.include_routers(account.router, agenda.router, notifications.router, chat.router)
+    dispatcher.include_routers(account.router, agenda.router, notifications.router, chat.router, group.router)
     await bot.set_my_commands(COMMANDS)
     await bot.set_my_description(
         "Dayla — ИИ-ассистент для планирования. Пишите планы словами или голосом, "
-        "спрашивайте о расписании и получайте напоминания. Подключите аккаунт на сайте Dayla."
+        "пересылайте билеты и скриншоты, спрашивайте о расписании и получайте напоминания. В рабочем чате упомяните "
+        "меня — задача попадёт в ваш календарь. Подключите аккаунт на сайте Dayla."
     )
     await bot.set_my_short_description("Планируйте день за минуту: чат, расписание и напоминания")
     worker = asyncio.create_task(notifications.worker(bot))

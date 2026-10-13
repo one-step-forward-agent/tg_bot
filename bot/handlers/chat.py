@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import logging
 import os
 import tempfile
@@ -42,6 +43,8 @@ logger = logging.getLogger(__name__)
 
 MAX_FILE_BYTES = 20 * 1024 * 1024
 DOCUMENT_TYPES = (".pdf", ".docx")
+IMAGE_TYPES = ("image/jpeg", "image/png", "image/webp")
+MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
 
 async def deliver(message: Message, reply: dict) -> None:
@@ -193,10 +196,45 @@ async def voice_message(message: Message, bot: Bot) -> None:
     await ask(message, text)
 
 
+@router.message(F.photo)
+async def photo_message(message: Message, bot: Bot) -> None:
+    """A ticket, an invitation or a screenshot of a chat: its text goes on as a message, with the caption."""
+    await read_image(message, bot, message.photo[-1], "image/jpeg")
+
+
+async def read_image(message: Message, bot: Bot, file, mime: str) -> None:
+    if getattr(file, "file_size", None) and file.file_size > MAX_IMAGE_BYTES:
+        await message.answer(messages.file_too_big())
+        return
+    if not await ensure_linked(message):
+        return
+    await message.answer(messages.reading_image())
+    try:
+        async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
+            buffer = await bot.download(file)
+            text = await backend.image_text(message.chat.id, base64.b64encode(buffer.read()).decode(), mime)
+    except BackendError as error:
+        await (message.answer(error.detail) if error.status in (422, 429) else report(message, error))
+        return
+    except Exception:
+        logger.exception("Photo from %s failed", message.chat.id)
+        await message.answer(messages.processing_error())
+        return
+    if not text.strip():
+        await message.answer(messages.image_empty())
+        return
+    caption = (message.caption or "").strip()
+    await ask(message, f"{caption}\n\nС картинки:\n{text}" if caption else f"С картинки:\n{text}")
+
+
 @router.message(F.document)
 async def document_message(message: Message, bot: Bot) -> None:
     document = message.document
     name = document.file_name or "документ"
+    if (document.mime_type or "") in IMAGE_TYPES:
+        # A photo sent as a file keeps its quality
+        await read_image(message, bot, document, document.mime_type)
+        return
     if not name.lower().endswith(DOCUMENT_TYPES):
         await message.answer(messages.unsupported_file())
         return

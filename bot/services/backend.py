@@ -56,6 +56,11 @@ class DaylaBackend:
     async def chat(self, chat_id: int, text: str) -> dict:
         return await self._request("POST", f"/internal/bot/chat/{chat_id}", {"text": text[:50000]}, timeout=ASSISTANT_TIMEOUT)
 
+    async def image_text(self, chat_id: int, image: str, mime: str) -> str:
+        """What a photo says (base64 of its bytes); the backend reads it with the model."""
+        data = await self._request("POST", f"/internal/bot/chat/{chat_id}/image-text", {"image": image, "mime": mime}, timeout=ASSISTANT_TIMEOUT)
+        return (data or {}).get("text") or ""
+
     async def topic(self, chat_id: int, index: int) -> dict:
         return await self._request("POST", f"/internal/bot/chat/{chat_id}/topic", {"index": index})
 

@@ -518,7 +518,33 @@ def account_unlinked() -> str:
 
 
 def unsupported_file() -> str:
-    return "📄 Я читаю только <b>PDF</b> и <b>DOCX</b>. Пришлите документ в одном из этих форматов."
+    return "📄 Я читаю <b>PDF</b>, <b>DOCX</b> и картинки. Пришлите документ в одном из этих форматов."
+
+
+def group_help(username: str) -> str:
+    return (
+        f"Я Dayla. Напишите <b>@{esc(username)}</b> и что запланировать — «@{esc(username)} отчёт к пятнице», "
+        "или ответьте так на сообщение коллеги: задача попадёт в ваш календарь, черновик пришлю в личку."
+    )
+
+
+def group_not_linked(username: str) -> str:
+    return (
+        f"Чтобы я записывала ваши задачи, откройте меня в личке — t.me/{esc(username)} — и подключите Dayla. "
+        "Потом просто упоминайте меня здесь."
+    )
+
+
+def group_sent() -> str:
+    return "✓ Записала в ваш план — подтвердите в личных сообщениях"
+
+
+def reading_image() -> str:
+    return "🖼 Смотрю картинку…"
+
+
+def image_empty() -> str:
+    return "🖼 На картинке не нашлось ничего о планах. Напишите, что добавить, — или перешлите текст."
 
 
 def file_too_big() -> str:

@@ -218,7 +218,7 @@ def proposal_keyboard(draft_id: int, count: int, change: bool = False, target: s
         InlineKeyboardButton(text="✖️ Отмена", callback_data=f"dr:{draft_id}:no"),
     ]]
     if count == 1:
-        rows.append(edit_row(draft_id, 0))
+        rows += edit_rows(draft_id, 0)
     else:
         numbers = [InlineKeyboardButton(text=f"✏️ {index + 1}", callback_data=f"dr:{draft_id}:sel:{index}") for index in range(min(count, 20))]
         rows += [numbers[start : start + 5] for start in range(0, len(numbers), 5)]
@@ -237,18 +237,26 @@ def targets_keyboard(draft_id: int, targets: list[dict], chosen: list[str]) -> I
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def edit_row(draft_id: int, index: int) -> list[InlineKeyboardButton]:
+def edit_rows(draft_id: int, index: int) -> list[list[InlineKeyboardButton]]:
+    """Every field of a task can be changed in words: the bot asks, the user writes «каждую неделю 5 раз», «за 2 часа»."""
     return [
-        InlineKeyboardButton(text="✏️ Название", callback_data=f"dr:{draft_id}:e:{index}:title"),
-        InlineKeyboardButton(text="📅 Дата", callback_data=f"dr:{draft_id}:e:{index}:date"),
-        InlineKeyboardButton(text="🕒 Время", callback_data=f"dr:{draft_id}:e:{index}:time"),
+        [
+            InlineKeyboardButton(text="✏️ Название", callback_data=f"dr:{draft_id}:e:{index}:title"),
+            InlineKeyboardButton(text="📅 Дата", callback_data=f"dr:{draft_id}:e:{index}:date"),
+            InlineKeyboardButton(text="🕒 Время", callback_data=f"dr:{draft_id}:e:{index}:time"),
+        ],
+        [
+            InlineKeyboardButton(text="🔁 Повтор", callback_data=f"dr:{draft_id}:e:{index}:repeat"),
+            InlineKeyboardButton(text="⏳ Период", callback_data=f"dr:{draft_id}:e:{index}:period"),
+            InlineKeyboardButton(text="🔔 Напомнить", callback_data=f"dr:{draft_id}:e:{index}:reminder"),
+        ],
     ]
 
 
 def proposal_item_keyboard(draft_id: int, index: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            edit_row(draft_id, index),
+            *edit_rows(draft_id, index),
             [
                 InlineKeyboardButton(text="🗑 Убрать из списка", callback_data=f"dr:{draft_id}:rm:{index}"),
                 InlineKeyboardButton(text="← Назад", callback_data=f"dr:{draft_id}:back"),
