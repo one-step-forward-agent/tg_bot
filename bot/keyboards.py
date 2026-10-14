@@ -26,7 +26,6 @@ main_menu = ReplyKeyboardMarkup(
         [KeyboardButton(text=MENU_REMINDERS), KeyboardButton(text=MENU_HELP)],
     ],
     resize_keyboard=True,
-    is_persistent=True,
     input_field_placeholder="Напишите план или вопрос…",
 )
 
