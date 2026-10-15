@@ -153,7 +153,17 @@ def topic_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=text, callback_data=f"qr:{index}")] for index, text in enumerate(TOPIC_REPLIES)])
 
 
-def delete_keyboard(draft_id: int, count: int) -> InlineKeyboardMarkup:
+def delete_keyboard(draft_id: int, count: int, series: bool = False) -> InlineKeyboardMarkup:
+    if series:
+        # A repeated task: just the found days, them and the later ones, or the whole series
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="Только эту" if count == 1 else "Только эти", callback_data=f"dr:{draft_id}:ok:one")],
+                [InlineKeyboardButton(text="Эту и следующие" if count == 1 else "Эти и следующие", callback_data=f"dr:{draft_id}:ok:following")],
+                [InlineKeyboardButton(text="🗑 Всю серию", callback_data=f"dr:{draft_id}:ok:all")],
+                [InlineKeyboardButton(text="✖️ Не удалять", callback_data=f"dr:{draft_id}:no")],
+            ]
+        )
     return InlineKeyboardMarkup(
         inline_keyboard=[[
             InlineKeyboardButton(text=f"🗑 Удалить ({count})", callback_data=f"dr:{draft_id}:ok"),

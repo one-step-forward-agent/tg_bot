@@ -54,7 +54,7 @@ async def deliver(message: Message, reply: dict) -> None:
     if kind == "proposal":
         await message.answer(messages.proposal(reply), reply_markup=proposal_markup(reply))
     elif kind == "delete_proposal":
-        await message.answer(messages.delete_proposal(reply), reply_markup=delete_keyboard(reply["draft_id"], reply["count"]))
+        await message.answer(messages.delete_proposal(reply), reply_markup=delete_keyboard(reply["draft_id"], reply["count"], bool(reply.get("series"))))
     elif kind in ("created", "updated"):
         await message.answer(messages.created(reply), reply_markup=result_keyboard(reply, app_url))
     elif kind == "completed":
@@ -350,7 +350,8 @@ async def draft_action(callback: CallbackQuery) -> None:
     try:
         draft_id, action = int(parts[1]), parts[2]
         if action == "ok":
-            reply = await backend.draft_confirm(chat_id, draft_id)
+            scope = parts[3] if len(parts) > 3 and parts[3] in ("one", "following", "all") else "one"
+            reply = await backend.draft_confirm(chat_id, draft_id, scope)
             if reply.get("kind") == "deleted":
                 await callback.message.edit_text(f"🗑 <b>{messages.esc(reply['text'])}</b>", reply_markup=None)
                 await callback.answer("Удалено ✓")

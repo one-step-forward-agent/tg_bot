@@ -88,8 +88,9 @@ class DaylaBackend:
     async def draft_calendars(self, chat_id: int, draft_id: int, calendars: list[str]) -> dict:
         return await self._request("POST", f"/internal/bot/chat/{chat_id}/drafts/{draft_id}/calendars", {"calendars": calendars})
 
-    async def draft_confirm(self, chat_id: int, draft_id: int) -> dict:
-        return await self._request("POST", f"/internal/bot/chat/{chat_id}/drafts/{draft_id}/confirm", timeout=ASSISTANT_TIMEOUT)
+    async def draft_confirm(self, chat_id: int, draft_id: int, scope: str = "one") -> dict:
+        """`scope`: for a deletion of a repeated task — just the found days, these and the later ones, or the whole series."""
+        return await self._request("POST", f"/internal/bot/chat/{chat_id}/drafts/{draft_id}/confirm?scope={scope}", timeout=ASSISTANT_TIMEOUT)
 
     async def draft_cancel(self, chat_id: int, draft_id: int) -> dict:
         return await self._request("POST", f"/internal/bot/chat/{chat_id}/drafts/{draft_id}/cancel")

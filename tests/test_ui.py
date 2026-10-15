@@ -154,7 +154,7 @@ async def test_draft_confirm_edit_and_gone(backend):
     backend.draft_confirm = AsyncMock(return_value={"kind": "created", "events": [event()], "event_ids": [7, 8]})
     callback = fake_callback("dr:42:ok")
     await chat.draft_action(callback)
-    backend.draft_confirm.assert_awaited_with(100, 42)
+    backend.draft_confirm.assert_awaited_with(100, 42, "one")
     assert "Добавила" in callback.message.edit_text.call_args.args[0]
     assert callback_data(callback.message.edit_text.call_args.kwargs["reply_markup"]) == ["undo:7-8"]
 
@@ -275,6 +275,19 @@ async def test_delete_proposal_and_confirmation(backend):
     await chat.draft_action(callback)
     assert "Удалила 12 задач" in callback.message.edit_text.call_args.args[0]
     callback.answer.assert_awaited_with("Удалено ✓")
+
+
+async def test_deleting_a_repeated_task_asks_how_much_of_the_series(backend):
+    reply = {"kind": "delete_proposal", "draft_id": 42, "count": 1, "title": "«Йога»", "events": [event()], "series": True, "message_id": 5}
+    message = fake_message()
+    await chat.deliver(message, reply)
+    assert callback_data(message.answer.call_args.kwargs["reply_markup"]) == ["dr:42:ok:one", "dr:42:ok:following", "dr:42:ok:all", "dr:42:no"]
+
+    backend.draft_confirm = AsyncMock(return_value={"kind": "deleted", "count": 8, "text": "Удалила 8 задач."})
+    callback = fake_callback("dr:42:ok:all")
+    await chat.draft_action(callback)
+    backend.draft_confirm.assert_awaited_with(100, 42, "all")
+    assert "Удалила 8 задач" in callback.message.edit_text.call_args.args[0]
 
 
 async def test_answers_can_be_rated(backend):
