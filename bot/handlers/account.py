@@ -7,6 +7,7 @@ from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove
 
 from bot.keyboards import MENU_HELP, MENU_REMINDERS, link_keyboard, main_menu, settings_keyboard
+from bot.i18n import remember, using
 from bot.services import site
 from bot.services.backend import BackendError, backend
 from bot.templates import messages
@@ -35,7 +36,10 @@ async def start_with_code(message: Message, command: CommandObject) -> None:
     except BackendError as error:
         await message.answer(messages.link_failed() if error.status in (404, 422) else messages.backend_unavailable())
         return
-    await message.answer(messages.linked(profile), reply_markup=main_menu)
+    # Linked just now: from here on the bot speaks the language chosen on the site
+    remember(message.chat.id, profile.get("language"))
+    with using(profile.get("language")):
+        await message.answer(messages.linked(profile), reply_markup=main_menu())
 
 
 @router.message(CommandStart())
@@ -45,11 +49,11 @@ async def start(message: Message) -> None:
     except BackendError as error:
         await report(message, error)
         return
-    await message.answer(messages.welcome_back(profile), reply_markup=main_menu)
+    await message.answer(messages.welcome_back(profile), reply_markup=main_menu())
 
 
 @router.message(Command("help"))
-@router.message(F.text == MENU_HELP)
+@router.message(F.text.in_(MENU_HELP))
 async def help_command(message: Message) -> None:
     await message.answer(messages.help_text())
 
@@ -70,7 +74,7 @@ async def render_settings(chat_id: int) -> tuple[str, object]:
 
 
 @router.message(Command("reminders"))
-@router.message(F.text == MENU_REMINDERS)
+@router.message(F.text.in_(MENU_REMINDERS))
 async def reminders(message: Message) -> None:
     try:
         text, keyboard = await render_settings(message.chat.id)
@@ -83,7 +87,7 @@ async def reminders(message: Message) -> None:
 @router.callback_query(F.data.startswith("rs:"))
 async def settings_button(callback: CallbackQuery) -> None:
     if not isinstance(callback.message, Message):
-        await callback.answer("Это сообщение устарело — отправьте команду ещё раз", show_alert=True)
+        await callback.answer(messages.outdated("command"), show_alert=True)
         return
     chat_id = callback.message.chat.id
     try:
@@ -105,10 +109,10 @@ async def settings_button(callback: CallbackQuery) -> None:
         await backend.update_reminder_settings(chat_id, update)
         text, keyboard = await render_settings(chat_id)
     except BackendError as error:
-        await callback.answer(messages.backend_unavailable() if not error.not_linked else "Telegram не подключён к Dayla", show_alert=True)
+        await callback.answer(messages.backend_unavailable() if not error.not_linked else messages.not_linked_alert(), show_alert=True)
         return
     try:
         await callback.message.edit_text(text, reply_markup=keyboard)
     except TelegramBadRequest:
         pass
-    await callback.answer("Сохранено ✓")
+    await callback.answer(messages.short("saved"))

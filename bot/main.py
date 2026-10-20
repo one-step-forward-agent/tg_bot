@@ -8,6 +8,7 @@ from aiogram.types import BotCommand, LinkPreviewOptions
 
 from bot.config import settings
 from bot.handlers import account, agenda, chat, group, notifications
+from bot.i18n import LanguageMiddleware
 from bot.services.backend import backend
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
@@ -25,6 +26,18 @@ COMMANDS = [
     BotCommand(command="help", description="Что я умею"),
     BotCommand(command="unlink", description="Отключить Telegram от Dayla"),
 ]
+COMMANDS_EN = [
+    BotCommand(command="today", description="Today's plan"),
+    BotCommand(command="tomorrow", description="Tomorrow's plan"),
+    BotCommand(command="week", description="The next 7 days"),
+    BotCommand(command="done", description="Mark tasks done"),
+    BotCommand(command="stats", description="Progress"),
+    BotCommand(command="advice", description="Advice on the plan"),
+    BotCommand(command="analysis", description="The week's analysis"),
+    BotCommand(command="reminders", description="Reminder settings"),
+    BotCommand(command="help", description="What I can do"),
+    BotCommand(command="unlink", description="Disconnect Telegram from Dayla"),
+]
 
 
 async def main() -> None:
@@ -33,14 +46,26 @@ async def main() -> None:
         default=DefaultBotProperties(parse_mode=ParseMode.HTML, link_preview=LinkPreviewOptions(is_disabled=True)),
     )
     dispatcher = Dispatcher()
+    # Every answer in the language chosen on the Dayla site
+    dispatcher.message.outer_middleware(LanguageMiddleware())
+    dispatcher.callback_query.outer_middleware(LanguageMiddleware())
     dispatcher.include_routers(account.router, agenda.router, notifications.router, chat.router, group.router)
     await bot.set_my_commands(COMMANDS)
+    # Telegram apps in English see the English menu before the account is linked
+    await bot.set_my_commands(COMMANDS_EN, language_code="en")
     await bot.set_my_description(
         "Dayla — ИИ-ассистент для планирования. Пишите планы словами или голосом, "
         "пересылайте билеты и скриншоты, спрашивайте о расписании и получайте напоминания. В рабочем чате упомяните "
         "меня — задача попадёт в ваш календарь. Подключите аккаунт на сайте Dayla."
     )
     await bot.set_my_short_description("Планируйте день за минуту: чат, расписание и напоминания")
+    await bot.set_my_description(
+        "Dayla is an AI planning assistant. Write your plans in words or by voice, forward tickets and screenshots, "
+        "ask about your schedule and get reminders. In a work chat, mention me — the task goes to your calendar. "
+        "Connect your account on the Dayla site.",
+        language_code="en",
+    )
+    await bot.set_my_short_description("Plan your day in a minute: chat, schedule and reminders", language_code="en")
     worker = asyncio.create_task(notifications.worker(bot))
     try:
         logger.info("Starting Telegram polling")

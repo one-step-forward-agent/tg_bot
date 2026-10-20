@@ -21,14 +21,14 @@ class DaylaBackend:
     def __init__(self) -> None:
         self._session: aiohttp.ClientSession | None = None
 
-    async def _request(self, method: str, path: str, json: dict | None = None, timeout: aiohttp.ClientTimeout = DEFAULT_TIMEOUT):
+    async def _request(self, method: str, path: str, json: dict | None = None, timeout: aiohttp.ClientTimeout = DEFAULT_TIMEOUT, data=None):
         if self._session is None or self._session.closed:
             self._session = aiohttp.ClientSession(
                 base_url=settings.BACKEND_URL.rstrip("/") + "/",
                 headers={"X-Bot-Token": settings.BOT_API_TOKEN},
             )
         try:
-            async with self._session.request(method, path.lstrip("/"), json=json, timeout=timeout) as response:
+            async with self._session.request(method, path.lstrip("/"), json=json, data=data, timeout=timeout) as response:
                 data = await response.json(content_type=None) if response.content_length != 0 else None
                 if response.status >= 400:
                     detail = data.get("detail") if isinstance(data, dict) else None
@@ -56,10 +56,12 @@ class DaylaBackend:
     async def chat(self, chat_id: int, text: str) -> dict:
         return await self._request("POST", f"/internal/bot/chat/{chat_id}", {"text": text[:50000]}, timeout=ASSISTANT_TIMEOUT)
 
-    async def image_text(self, chat_id: int, image: str, mime: str) -> str:
-        """What a photo says (base64 of its bytes); the backend reads it with the model."""
-        data = await self._request("POST", f"/internal/bot/chat/{chat_id}/image-text", {"image": image, "mime": mime}, timeout=ASSISTANT_TIMEOUT)
-        return (data or {}).get("text") or ""
+    async def chat_file(self, chat_id: int, name: str, content: bytes, text: str = "") -> dict:
+        """A document or photo with its caption: the backend reads it and answers, exactly as on the site."""
+        form = aiohttp.FormData()
+        form.add_field("file", content, filename=name)
+        form.add_field("text", text[:50000])
+        return await self._request("POST", f"/internal/bot/chat/{chat_id}/file", data=form, timeout=ASSISTANT_TIMEOUT)
 
     async def topic(self, chat_id: int, index: int) -> dict:
         return await self._request("POST", f"/internal/bot/chat/{chat_id}/topic", {"index": index})

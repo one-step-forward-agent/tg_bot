@@ -60,7 +60,7 @@ async def test_same_day_and_gone_task_are_told_plainly(backend):
     backend.move = AsyncMock(side_effect=BackendError(410, "Event is gone"))
     callback = fake_callback("mt:7:20261010")
     await agenda.move_to(callback)
-    callback.answer.assert_awaited_once_with(agenda.GONE, show_alert=True)
+    callback.answer.assert_awaited_once_with(messages.task_gone(), show_alert=True)
 
 
 async def test_typed_date_asks_for_it(backend):

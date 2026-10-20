@@ -28,7 +28,7 @@ from bot.templates import messages
 router = Router()
 router.message.filter(F.chat.type == ChatType.PRIVATE)
 
-MENU_SCOPES = {MENU_TODAY: "today", MENU_TOMORROW: "tomorrow", MENU_WEEK: "week"}
+MENU_SCOPES = {**dict.fromkeys(MENU_TODAY, "today"), **dict.fromkeys(MENU_TOMORROW, "tomorrow"), **dict.fromkeys(MENU_WEEK, "week")}
 # Notifications keep their text: buttons on them answer with a new message
 NOTIFICATION_PREFIXES = ("☀️", "🕐", "🔔", "🌙", "⏳", "💡")
 
@@ -83,7 +83,7 @@ async def replace_or_answer(callback: CallbackQuery, text: str, keyboard) -> Non
 
 
 @router.message(Command("done"))
-@router.message(F.text == MENU_DONE)
+@router.message(F.text.in_(MENU_DONE))
 async def done(message: Message) -> None:
     try:
         text, keyboard = await render_done(message.chat.id, "today")
@@ -94,7 +94,7 @@ async def done(message: Message) -> None:
 
 
 @router.message(Command("stats"))
-@router.message(F.text == MENU_STATS)
+@router.message(F.text.in_(MENU_STATS))
 async def stats(message: Message) -> None:
     try:
         data = await backend.stats(message.chat.id)
@@ -107,7 +107,7 @@ async def stats(message: Message) -> None:
 @router.callback_query(F.data.startswith("dn:"))
 async def done_list(callback: CallbackQuery) -> None:
     if not isinstance(callback.message, Message):
-        await callback.answer("Это сообщение устарело — отправьте /done", show_alert=True)
+        await callback.answer(messages.outdated("done"), show_alert=True)
         return
     scope = callback.data.split(":", 1)[1]
     if scope not in SCOPES:
@@ -116,7 +116,7 @@ async def done_list(callback: CallbackQuery) -> None:
     try:
         text, keyboard = await render_done(callback.message.chat.id, scope)
     except BackendError as error:
-        await callback.answer("Telegram не подключён к Dayla" if error.not_linked else messages.backend_unavailable(), show_alert=True)
+        await callback.answer(messages.not_linked_alert() if error.not_linked else messages.backend_unavailable(), show_alert=True)
         return
     await replace_or_answer(callback, text, keyboard)
     await callback.answer()
@@ -125,7 +125,7 @@ async def done_list(callback: CallbackQuery) -> None:
 @router.callback_query(F.data.startswith("dt:"))
 async def toggle_done(callback: CallbackQuery) -> None:
     if not isinstance(callback.message, Message):
-        await callback.answer("Это сообщение устарело — отправьте /done", show_alert=True)
+        await callback.answer(messages.outdated("done"), show_alert=True)
         return
     try:
         _, event_id, scope, value = callback.data.split(":")
@@ -135,19 +135,19 @@ async def toggle_done(callback: CallbackQuery) -> None:
         await callback.answer()
         return
     except BackendError as error:
-        await callback.answer("Задача не найдена — возможно, её удалили" if error.status == 404 else messages.backend_unavailable(), show_alert=True)
+        await callback.answer(messages.task_gone() if error.status == 404 else messages.backend_unavailable(), show_alert=True)
         return
     try:
         await callback.message.edit_text(text, reply_markup=keyboard)
     except TelegramBadRequest:
         pass
-    await callback.answer("Выполнено ✓" if value == "1" else "Снята отметка")
+    await callback.answer(messages.short("done") if value == "1" else messages.short("unmarked"))
 
 
 @router.callback_query(F.data.startswith("ag:"))
 async def switch(callback: CallbackQuery) -> None:
     if not isinstance(callback.message, Message):
-        await callback.answer("Это сообщение устарело — отправьте команду ещё раз", show_alert=True)
+        await callback.answer(messages.outdated("command"), show_alert=True)
         return
     scope = callback.data.split(":", 1)[1]
     if scope not in SCOPES:
@@ -156,7 +156,7 @@ async def switch(callback: CallbackQuery) -> None:
     try:
         text, keyboard = await render(callback.message.chat.id, scope)
     except BackendError as error:
-        await callback.answer("Telegram не подключён к Dayla" if error.not_linked else messages.backend_unavailable(), show_alert=True)
+        await callback.answer(messages.not_linked_alert() if error.not_linked else messages.backend_unavailable(), show_alert=True)
         return
     await replace_or_answer(callback, text, keyboard)
     await callback.answer()
@@ -164,7 +164,6 @@ async def switch(callback: CallbackQuery) -> None:
 
 # ---------- "↪️ Перенести": choose a task, then the day ----------
 
-GONE = "Задача не найдена — возможно, её удалили"
 
 
 async def _edit(callback: CallbackQuery, text: str, keyboard) -> None:
@@ -176,14 +175,14 @@ async def _edit(callback: CallbackQuery, text: str, keyboard) -> None:
 
 def _failed(error: BackendError) -> str:
     if error.not_linked:
-        return "Telegram не подключён к Dayla"
-    return GONE if error.status == 410 else messages.backend_unavailable()
+        return messages.not_linked_alert()
+    return messages.task_gone() if error.status == 410 else messages.backend_unavailable()
 
 
 @router.callback_query(F.data.startswith("mv:"))
 async def move_list(callback: CallbackQuery) -> None:
     if not isinstance(callback.message, Message):
-        await callback.answer("Это сообщение устарело — откройте план ещё раз", show_alert=True)
+        await callback.answer(messages.outdated("plan"), show_alert=True)
         return
     scope = callback.data.split(":", 1)[1]
     if scope not in SCOPES:
@@ -238,10 +237,10 @@ async def move_to(callback: CallbackQuery) -> None:
         await callback.answer(_failed(error), show_alert=True)
         return
     if reply.get("kind") != "updated":
-        await callback.answer(reply.get("text") or "Готово", show_alert=True)
+        await callback.answer(reply.get("text") or messages.short("ready"), show_alert=True)
         return
     await replace_or_answer(callback, messages.moved(reply), moved_keyboard(reply))
-    await callback.answer("Перенесла ✓")
+    await callback.answer(messages.short("moved"))
 
 
 @router.callback_query(F.data.startswith("mw:"))

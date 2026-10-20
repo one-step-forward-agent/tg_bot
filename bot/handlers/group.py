@@ -41,9 +41,8 @@ def request_text(message: Message, username: str, replied_to_bot: bool) -> str:
     text = re.sub(rf"@{re.escape(username)}\b", " ", text, flags=re.I).strip(" ,:—-\n")
     quoted = message.reply_to_message
     if quoted and not replied_to_bot and (quoted.text or quoted.caption):
-        author = quoted.from_user.full_name if quoted.from_user else "участник"
-        chat = message.chat.title or "группы"
-        text = f"{text or 'Запланируй это'}\n\nСообщение из чата «{chat}» от {author}:\n{quoted.text or quoted.caption}"
+        author = quoted.from_user.full_name if quoted.from_user else None
+        text = messages.group_quote(text, message.chat.title, author, quoted.text or quoted.caption)
     return text.strip()
 
 

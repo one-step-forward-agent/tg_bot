@@ -1,5 +1,4 @@
 import asyncio
-import base64
 import logging
 import os
 import tempfile
@@ -14,7 +13,7 @@ from bot.handlers.account import report
 from aiogram.filters import Command
 
 from bot.keyboards import (
-    TOPIC_REPLIES,
+    topic_replies,
     advice_keyboard,
     agenda_keyboard,
     created_keyboard,
@@ -34,7 +33,6 @@ from bot.keyboards import (
 from bot.services import site
 from bot.services.backend import BackendError, backend
 from bot.services.speech import recognize_audio
-from bot.services.text_extractors import extract_document
 from bot.templates import messages
 
 router = Router()
@@ -42,9 +40,8 @@ router.message.filter(F.chat.type == ChatType.PRIVATE)
 logger = logging.getLogger(__name__)
 
 MAX_FILE_BYTES = 20 * 1024 * 1024
-DOCUMENT_TYPES = (".pdf", ".docx")
-IMAGE_TYPES = ("image/jpeg", "image/png", "image/webp")
-MAX_IMAGE_BYTES = 10 * 1024 * 1024
+# What the backend reads (app/services/attachments.py)
+FILE_TYPES = (".pdf", ".docx", ".xlsx", ".csv", ".tsv", ".txt", ".md", ".ics", ".jpg", ".jpeg", ".png", ".webp", ".gif")
 
 
 async def deliver(message: Message, reply: dict) -> None:
@@ -145,7 +142,7 @@ async def discuss_advice(callback: CallbackQuery) -> None:
     try:
         reply = await backend.topic(callback.message.chat.id, int(callback.data.split(":")[1]))
     except (ValueError, BackendError):
-        await callback.answer("Совет устарел — запросите советы ещё раз", show_alert=True)
+        await callback.answer(messages.short("advice_outdated"), show_alert=True)
         return
     await callback.message.answer(messages.topic(reply), reply_markup=topic_keyboard())
     await callback.answer()
@@ -157,7 +154,7 @@ async def quick_reply(callback: CallbackQuery) -> None:
         await callback.answer()
         return
     try:
-        text = TOPIC_REPLIES[int(callback.data.split(":")[1])]
+        text = topic_replies()[int(callback.data.split(":")[1])]
     except (ValueError, IndexError):
         await callback.answer()
         return
@@ -198,70 +195,46 @@ async def voice_message(message: Message, bot: Bot) -> None:
 
 @router.message(F.photo)
 async def photo_message(message: Message, bot: Bot) -> None:
-    """A ticket, an invitation or a screenshot of a chat: its text goes on as a message, with the caption."""
-    await read_image(message, bot, message.photo[-1], "image/jpeg")
-
-
-async def read_image(message: Message, bot: Bot, file, mime: str) -> None:
-    if getattr(file, "file_size", None) and file.file_size > MAX_IMAGE_BYTES:
-        await message.answer(messages.file_too_big())
-        return
-    if not await ensure_linked(message):
-        return
-    await message.answer(messages.reading_image())
-    try:
-        async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
-            buffer = await bot.download(file)
-            text = await backend.image_text(message.chat.id, base64.b64encode(buffer.read()).decode(), mime)
-    except BackendError as error:
-        await (message.answer(error.detail) if error.status in (422, 429) else report(message, error))
-        return
-    except Exception:
-        logger.exception("Photo from %s failed", message.chat.id)
-        await message.answer(messages.processing_error())
-        return
-    if not text.strip():
-        await message.answer(messages.image_empty())
-        return
-    caption = (message.caption or "").strip()
-    await ask(message, f"{caption}\n\nС картинки:\n{text}" if caption else f"С картинки:\n{text}")
+    """A ticket, an invitation, a timetable or a screenshot of a chat: read by the backend, as on the site."""
+    await send_file(message, bot, message.photo[-1], "photo.jpg")
 
 
 @router.message(F.document)
 async def document_message(message: Message, bot: Bot) -> None:
+    """PDF, Word, Excel, CSV, text or a picture sent as a file (it keeps its quality)."""
     document = message.document
-    name = document.file_name or "документ"
-    if (document.mime_type or "") in IMAGE_TYPES:
-        # A photo sent as a file keeps its quality
-        await read_image(message, bot, document, document.mime_type)
-        return
-    if not name.lower().endswith(DOCUMENT_TYPES):
+    name = document.file_name or "file"
+    if not name.lower().endswith(FILE_TYPES):
         await message.answer(messages.unsupported_file())
         return
-    if document.file_size and document.file_size > MAX_FILE_BYTES:
+    await send_file(message, bot, document, name)
+
+
+async def send_file(message: Message, bot: Bot, file, name: str) -> None:
+    if getattr(file, "file_size", None) and file.file_size > MAX_FILE_BYTES:
         await message.answer(messages.file_too_big())
         return
     if not await ensure_linked(message):
         return
-    await message.answer(messages.reading_document(name))
-    path = ""
+    await message.answer(messages.reading_file(name))
     try:
         async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
-            with tempfile.NamedTemporaryFile(suffix=os.path.splitext(name)[1].lower(), delete=False) as temp:
-                path = temp.name
-            await bot.download(document, destination=path)
-            text = await asyncio.to_thread(extract_document, path)
+            buffer = await bot.download(file)
+            reply = await backend.chat_file(message.chat.id, name, buffer.read(), (message.caption or "").strip())
+    except BackendError as error:
+        if error.status in (413, 422, 429):
+            # The file cannot be read or a limit is reached: the backend says why in words
+            await message.answer(error.detail)
+        elif error.status == 503 and "Assistant" in error.detail:
+            await message.answer(messages.assistant_unavailable())
+        else:
+            await report(message, error)
+        return
     except Exception:
-        logger.exception("Document from %s failed", message.chat.id)
+        logger.exception("File from %s failed", message.chat.id)
         await message.answer(messages.processing_error())
         return
-    finally:
-        if path and os.path.exists(path):
-            os.unlink(path)
-    if not text.strip():
-        await message.answer(messages.document_empty())
-        return
-    await ask(message, text)
+    await deliver(message, reply)
 
 
 @router.message(F.chat.type == ChatType.PRIVATE)
@@ -280,19 +253,19 @@ async def rate(callback: CallbackQuery) -> None:
         _, message_id, value = callback.data.split(":")
         await backend.rate(callback.message.chat.id, int(message_id), int(value))
     except (ValueError, BackendError):
-        await callback.answer("Не получилось сохранить оценку", show_alert=True)
+        await callback.answer(messages.short("rating_failed"), show_alert=True)
         return
     try:
         await callback.message.edit_reply_markup(reply_markup=rated(callback.message.reply_markup, int(message_id), int(value)))
     except TelegramBadRequest:
         pass
-    await callback.answer("Спасибо за оценку!" if int(value) else "Оценка снята")
+    await callback.answer(messages.short("rating_thanks") if int(value) else messages.short("rating_removed"))
 
 
 @router.callback_query(F.data.startswith("undo:"))
 async def undo(callback: CallbackQuery) -> None:
     if not isinstance(callback.message, Message):
-        await callback.answer("Это сообщение устарело — отправьте команду ещё раз", show_alert=True)
+        await callback.answer(messages.outdated("command"), show_alert=True)
         return
     try:
         ids = expand_ids(callback.data.split(":", 1)[1])
@@ -304,14 +277,14 @@ async def undo(callback: CallbackQuery) -> None:
         await callback.message.edit_text(f"<s>{callback.message.html_text}</s>\n\n{messages.undone(deleted)}", reply_markup=None)
     except TelegramBadRequest:
         await callback.message.edit_reply_markup(reply_markup=None)
-    await callback.answer("Отменено" if deleted else "Уже удалено")
+    await callback.answer(messages.short("cancelled") if deleted else messages.short("already_deleted"))
 
 
 @router.callback_query(F.data.startswith("rc:"))
 async def cancel_reminder(callback: CallbackQuery) -> None:
     """"Отменить" under a reminder the assistant set."""
     if not isinstance(callback.message, Message):
-        await callback.answer("Это сообщение устарело", show_alert=True)
+        await callback.answer(messages.outdated(), show_alert=True)
         return
     try:
         reply = await backend.cancel_reminder(callback.message.chat.id, int(callback.data.split(":")[1]))
@@ -319,20 +292,20 @@ async def cancel_reminder(callback: CallbackQuery) -> None:
         await callback.answer(messages.backend_unavailable(), show_alert=True)
         return
     except BackendError as error:
-        await callback.answer("Напоминание уже пришло или отменено" if error.status == 404 else messages.backend_unavailable(), show_alert=True)
+        await callback.answer(messages.short("reminder_gone") if error.status == 404 else messages.backend_unavailable(), show_alert=True)
         return
     try:
         await callback.message.edit_text(f"<s>{callback.message.html_text}</s>\n\n{messages.reminder_cancelled(reply['text'])}", reply_markup=None)
     except TelegramBadRequest:
         await callback.message.edit_reply_markup(reply_markup=None)
-    await callback.answer("Отменено")
+    await callback.answer(messages.short("cancelled"))
 
 
 async def _show_proposal(callback: CallbackQuery, reply: dict) -> None:
     if reply.get("kind") == "proposal":
         text, keyboard = messages.proposal(reply), proposal_markup(reply)
     else:
-        text, keyboard = messages.proposal_closed(reply.get("text") or "Черновик закрыт"), None
+        text, keyboard = messages.proposal_closed(reply.get("text") or messages.short("draft_closed")), None
     try:
         await callback.message.edit_text(text, reply_markup=keyboard)
     except TelegramBadRequest:
@@ -343,7 +316,7 @@ async def _show_proposal(callback: CallbackQuery, reply: dict) -> None:
 async def draft_action(callback: CallbackQuery) -> None:
     """Buttons under a proposal: add, cancel, choose a task, edit a field or remove a task."""
     if not isinstance(callback.message, Message):
-        await callback.answer("Это сообщение устарело — отправьте задачу ещё раз", show_alert=True)
+        await callback.answer(messages.outdated("task"), show_alert=True)
         return
     chat_id = callback.message.chat.id
     parts = callback.data.split(":")
@@ -354,21 +327,21 @@ async def draft_action(callback: CallbackQuery) -> None:
             reply = await backend.draft_confirm(chat_id, draft_id, scope)
             if reply.get("kind") == "deleted":
                 await callback.message.edit_text(f"🗑 <b>{messages.esc(reply['text'])}</b>", reply_markup=None)
-                await callback.answer("Удалено ✓")
+                await callback.answer(messages.short("deleted"))
                 return
             keyboard = result_keyboard(reply, await site.app_url())
             try:
                 await callback.message.edit_text(messages.created(reply), reply_markup=keyboard)
             except TelegramBadRequest:
                 await callback.message.answer(messages.created(reply), reply_markup=keyboard)
-            await callback.answer("Изменено ✓" if reply.get("kind") == "updated" else "Добавлено ✓")
+            await callback.answer(messages.short("changed") if reply.get("kind") == "updated" else messages.short("added"))
         elif action == "no":
             await _show_proposal(callback, await backend.draft_cancel(chat_id, draft_id))
-            await callback.answer("Отменено")
+            await callback.answer(messages.short("cancelled"))
         elif action == "sel":
             index = int(parts[3])
             await callback.message.edit_reply_markup(reply_markup=proposal_item_keyboard(draft_id, index))
-            await callback.answer(f"Задача {index + 1}: что изменить?")
+            await callback.answer(messages.what_to_change(index))
         elif action == "back":
             await _show_proposal(callback, await backend.draft(chat_id, draft_id))
             await callback.answer()
@@ -395,10 +368,10 @@ async def draft_action(callback: CallbackQuery) -> None:
                 await callback.message.edit_text(messages.proposal(reply), reply_markup=targets_keyboard(draft_id, reply.get("targets") or [], reply.get("calendars") or []))
             except TelegramBadRequest:
                 pass
-            await callback.answer("Запомню этот выбор" if len(parts) > 3 else "Куда ещё добавить задачи?")
+            await callback.answer(messages.short("remember_choice") if len(parts) > 3 else messages.short("where_else"))
         elif action == "rm":
             await _show_proposal(callback, await backend.draft_remove(chat_id, draft_id, int(parts[3])))
-            await callback.answer("Убрано")
+            await callback.answer(messages.short("removed"))
         else:
             await callback.answer()
     except (IndexError, ValueError):
@@ -409,8 +382,8 @@ async def draft_action(callback: CallbackQuery) -> None:
                 await callback.message.edit_reply_markup(reply_markup=None)
             except TelegramBadRequest:
                 pass
-            await callback.answer("Этот черновик уже обработан", show_alert=True)
+            await callback.answer(messages.short("draft_handled"), show_alert=True)
         elif error.status == 422:
-            await callback.answer("Этот календарь больше не подключён", show_alert=True)
+            await callback.answer(messages.short("calendar_gone"), show_alert=True)
         else:
-            await callback.answer("Telegram не подключён к Dayla" if error.not_linked else messages.backend_unavailable(), show_alert=True)
+            await callback.answer(messages.not_linked_alert() if error.not_linked else messages.backend_unavailable(), show_alert=True)
