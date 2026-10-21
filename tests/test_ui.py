@@ -337,12 +337,40 @@ async def test_shared_commands_render_like_the_web_chat(backend):
             assert "Созвон &lt;завтра&gt;" in message.answer.call_args.args[0]
 
 
+async def test_reminder_brings_its_file(backend):
+    """"Пришли этот файл в 21:00": the file comes as a document with the reminder as its caption."""
+    from types import SimpleNamespace
+
+    bot = SimpleNamespace(send_message=AsyncMock(), send_document=AsyncMock())
+    backend.notification_file = AsyncMock(return_value=b"%PDF-1.4")
+    backend.ack_notification = AsyncMock()
+    item = {"id": 7, "chat_id": 5, "text": "🔔 <b>Напоминание</b>\n\nОтчёт", "kind": "custom", "payload": {"file": {"id": "a" * 32, "name": "отчёт.pdf"}}}
+    await notifications.deliver(bot, item)
+    backend.notification_file.assert_awaited_with(7)
+    document = bot.send_document.call_args.args[1]
+    assert document.filename == "отчёт.pdf" and bot.send_document.call_args.kwargs["caption"] == item["text"]
+    bot.send_message.assert_not_awaited()
+    backend.ack_notification.assert_awaited_with(7, ok=True)
+
+    # The file is gone already: the reminder still comes, as text
+    bot = SimpleNamespace(send_message=AsyncMock(), send_document=AsyncMock())
+    backend.notification_file = AsyncMock(side_effect=BackendError(404, "File not found"))
+    await notifications.deliver(bot, item)
+    bot.send_document.assert_not_awaited()
+    assert bot.send_message.call_args.args[1] == item["text"]
+
+
 async def test_discuss_advice_and_quick_reply(backend):
     backend.topic = AsyncMock(return_value={"kind": "topic", "title": "Скоро дедлайн", "text": "Отчёт"})
+    backend.chat = AsyncMock(return_value={"kind": "answer", "text": "Три шага", "message_id": 2})
     callback = fake_callback("adv:1", text="💡 Советы на сегодня")
     await chat.discuss_advice(callback)
     backend.topic.assert_awaited_with(100, 1)
-    assert "Обсуждаем" in callback.message.answer.call_args.args[0]
+    # "Как это сделать?" opens the topic and asks the question at once
+    sent = [call.args[0] for call in callback.message.answer.call_args_list]
+    assert "Обсуждаем" in sent[0]
+    backend.chat.assert_awaited_with(100, "Как это сделать?")
+    assert "Три шага" in sent[-1]
 
     backend.chat = AsyncMock(return_value={"kind": "answer", "text": "Вот план", "message_id": 3})
     callback = fake_callback("qr:1", text="💡 Обсуждаем")

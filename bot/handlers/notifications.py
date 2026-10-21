@@ -3,7 +3,7 @@ import logging
 
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import BufferedInputFile, CallbackQuery, Message
 
 from bot.config import settings
 from bot.i18n import using
@@ -37,9 +37,16 @@ async def deliver(bot: Bot, item: dict) -> None:
         await send(bot, item)
 
 
+CAPTION_LIMIT = 1024
+
+
 async def send(bot: Bot, item: dict) -> None:
     try:
-        await bot.send_message(item["chat_id"], item["text"], reply_markup=keyboard_for(item))
+        attached = (item.get("payload") or {}).get("file")
+        if isinstance(attached, dict):
+            await send_with_file(bot, item, attached)
+        else:
+            await bot.send_message(item["chat_id"], item["text"], reply_markup=keyboard_for(item))
     except TelegramRetryAfter as error:
         await backend.ack_notification(item["id"], ok=False, error=f"retry after {error.retry_after}s")
         await asyncio.sleep(error.retry_after)
@@ -53,6 +60,23 @@ async def send(bot: Bot, item: dict) -> None:
     else:
         await backend.ack_notification(item["id"], ok=True)
         logger.info("Notification %s (%s) delivered", item["id"], item["kind"])
+
+
+async def send_with_file(bot: Bot, item: dict, attached: dict) -> None:
+    """"Пришли этот файл в 21:00": the file comes as a document, the reminder's text as its caption (or just above
+    it when too long for one). A file already gone still leaves the reminder's text."""
+    try:
+        content = await backend.notification_file(item["id"])
+    except BackendError as error:
+        logger.warning("File of notification %s is not available: %s", item["id"], error.detail)
+        await bot.send_message(item["chat_id"], item["text"], reply_markup=keyboard_for(item))
+        return
+    document = BufferedInputFile(content, filename=str(attached.get("name") or "file"))
+    if len(item["text"]) <= CAPTION_LIMIT:
+        await bot.send_document(item["chat_id"], document, caption=item["text"], reply_markup=keyboard_for(item))
+        return
+    await bot.send_message(item["chat_id"], item["text"])
+    await bot.send_document(item["chat_id"], document, reply_markup=keyboard_for(item))
 
 
 async def worker(bot: Bot) -> None:

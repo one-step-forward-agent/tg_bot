@@ -135,7 +135,8 @@ async def shared_command(message: Message) -> None:
 
 @router.callback_query(F.data.startswith("adv:"))
 async def discuss_advice(callback: CallbackQuery) -> None:
-    """"Обсудить" under advice: the recommendation becomes the topic, like in the web chat."""
+    """"Как это сделать?" under advice: the recommendation becomes the topic, like in the web chat,
+    and the assistant is asked at once how to apply it."""
     if not isinstance(callback.message, Message):
         await callback.answer()
         return
@@ -144,8 +145,11 @@ async def discuss_advice(callback: CallbackQuery) -> None:
     except (ValueError, BackendError):
         await callback.answer(messages.short("advice_outdated"), show_alert=True)
         return
-    await callback.message.answer(messages.topic(reply), reply_markup=topic_keyboard())
+    await callback.message.answer(messages.topic(reply))
     await callback.answer()
+    text = topic_replies()[0]
+    await callback.message.answer(f"<i>{messages.esc(text)}</i>")
+    await ask(callback.message, text)
 
 
 @router.callback_query(F.data.startswith("qr:"))

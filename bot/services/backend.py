@@ -21,19 +21,31 @@ class DaylaBackend:
     def __init__(self) -> None:
         self._session: aiohttp.ClientSession | None = None
 
-    async def _request(self, method: str, path: str, json: dict | None = None, timeout: aiohttp.ClientTimeout = DEFAULT_TIMEOUT, data=None):
+    def _client(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
             self._session = aiohttp.ClientSession(
                 base_url=settings.BACKEND_URL.rstrip("/") + "/",
                 headers={"X-Bot-Token": settings.BOT_API_TOKEN},
             )
+        return self._session
+
+    async def _request(self, method: str, path: str, json: dict | None = None, timeout: aiohttp.ClientTimeout = DEFAULT_TIMEOUT, data=None):
         try:
-            async with self._session.request(method, path.lstrip("/"), json=json, data=data, timeout=timeout) as response:
+            async with self._client().request(method, path.lstrip("/"), json=json, data=data, timeout=timeout) as response:
                 data = await response.json(content_type=None) if response.content_length != 0 else None
                 if response.status >= 400:
                     detail = data.get("detail") if isinstance(data, dict) else None
                     raise BackendError(response.status, str(detail or response.reason))
                 return data
+        except (aiohttp.ClientError, TimeoutError) as error:
+            raise BackendError(503, str(error) or "backend unavailable") from error
+
+    async def _download(self, path: str) -> bytes:
+        try:
+            async with self._client().get(path.lstrip("/"), timeout=DEFAULT_TIMEOUT) as response:
+                if response.status >= 400:
+                    raise BackendError(response.status, response.reason or "download failed")
+                return await response.read()
         except (aiohttp.ClientError, TimeoutError) as error:
             raise BackendError(503, str(error) or "backend unavailable") from error
 
@@ -121,6 +133,10 @@ class DaylaBackend:
             f"/internal/bot/notifications/{notification_id}/ack",
             {"ok": ok, "error": error, "chat_unreachable": chat_unreachable},
         )
+
+    async def notification_file(self, notification_id: int) -> bytes:
+        """The file a reminder brings ("пришли этот файл в 21:00")."""
+        return await self._download(f"/internal/bot/notifications/{notification_id}/file")
 
     async def event(self, chat_id: int, event_id: int) -> dict:
         return await self._request("GET", f"/internal/bot/chat/{chat_id}/events/{event_id}")

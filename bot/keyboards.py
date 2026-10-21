@@ -164,7 +164,8 @@ def rated(markup: InlineKeyboardMarkup | None, message_id: int, value: int) -> I
 
 
 def advice_keyboard(count: int, message_id: int | None) -> InlineKeyboardMarkup:
-    rows = [[InlineKeyboardButton(text=tr(f"💬 Обсудить {index + 1}", f"💬 Discuss {index + 1}") if count > 1 else tr("💬 Обсудить", "💬 Discuss"), callback_data=f"adv:{index}") for index in range(min(count, 3))]]
+    # "How do I do it?" asks the assistant how to apply that piece of advice
+    rows = [[InlineKeyboardButton(text=tr(f"💬 Как сделать {index + 1}?", f"💬 How to do {index + 1}?") if count > 1 else f"💬 {topic_replies()[0]}", callback_data=f"adv:{index}") for index in range(min(count, 3))]]
     return with_rating(InlineKeyboardMarkup(inline_keyboard=rows), message_id)
 
 

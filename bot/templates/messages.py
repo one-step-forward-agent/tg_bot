@@ -167,7 +167,8 @@ def no_time() -> str:
 
 
 def priority_mark(event: dict) -> str:
-    return {"urgent": "‼️ ", "high": "❗ "}.get(event.get("priority") or "", "")
+    # Two priorities: a high one (or an old "urgent") is marked, a regular one is not
+    return "❗ " if event.get("priority") in ("high", "urgent") else ""
 
 
 def event_card(event: dict) -> str:
