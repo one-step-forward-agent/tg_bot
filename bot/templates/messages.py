@@ -649,13 +649,6 @@ def account_unlinked() -> str:
     )
 
 
-def unsupported_file() -> str:
-    return tr(
-        "📄 Я читаю <b>PDF</b>, <b>Word</b>, <b>Excel</b>, <b>CSV</b>, текстовые файлы и фото. Пришлите файл в одном из этих форматов.",
-        "📄 I read <b>PDF</b>, <b>Word</b>, <b>Excel</b>, <b>CSV</b>, text files and photos. Send a file in one of these formats.",
-    )
-
-
 def group_help(username: str) -> str:
     return tr(
         f"Я Dayla. Напишите <b>@{esc(username)}</b> и что запланировать — «@{esc(username)} отчёт к пятнице», "

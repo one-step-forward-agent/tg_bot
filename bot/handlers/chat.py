@@ -39,9 +39,8 @@ router = Router()
 router.message.filter(F.chat.type == ChatType.PRIVATE)
 logger = logging.getLogger(__name__)
 
+# The most the bot can download from Telegram, and what the backend takes (attachments.MAX_CHAT_FILE_MB)
 MAX_FILE_BYTES = 20 * 1024 * 1024
-# What the backend reads (app/services/attachments.py)
-FILE_TYPES = (".pdf", ".docx", ".xlsx", ".csv", ".tsv", ".txt", ".md", ".ics", ".jpg", ".jpeg", ".png", ".webp", ".gif")
 
 
 async def deliver(message: Message, reply: dict) -> None:
@@ -205,13 +204,10 @@ async def photo_message(message: Message, bot: Bot) -> None:
 
 @router.message(F.document)
 async def document_message(message: Message, bot: Bot) -> None:
-    """PDF, Word, Excel, CSV, text or a picture sent as a file (it keeps its quality)."""
+    """Any file up to 20 MB: PDF, Word, Excel, CSV, text and pictures are read; any other one is taken when the
+    caption asks to send it back ("пришли в 21:00"). The backend decides and says in words when it can't."""
     document = message.document
-    name = document.file_name or "file"
-    if not name.lower().endswith(FILE_TYPES):
-        await message.answer(messages.unsupported_file())
-        return
-    await send_file(message, bot, document, name)
+    await send_file(message, bot, document, document.file_name or "file")
 
 
 async def send_file(message: Message, bot: Bot, file, name: str) -> None:
