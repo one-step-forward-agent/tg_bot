@@ -349,12 +349,14 @@ def moved(reply: dict) -> str:
 
 def created(reply: dict) -> str:
     events = reply["events"]
+    # An imported .ics shows a few of its events; count is all of them
+    count = reply.get("count") or len(events)
     if reply.get("kind") == "updated":
         header = tr("✏️ <b>Изменила</b>", "✏️ <b>Changed</b>")
-    elif len(events) == 1:
+    elif count == 1:
         header = tr("✨ <b>Добавила в календарь</b>", "✨ <b>Added to the calendar</b>")
     else:
-        header = f"✨ <b>{tr('Добавила', 'Added')} {counted(len(events), 'событие', 'события', 'событий', 'event', 'events')}</b>"
+        header = f"✨ <b>{tr('Добавила', 'Added')} {counted(count, 'событие', 'события', 'событий', 'event', 'events')}</b>"
     parts = [header, *[event_card(event) for event in events]]
     if reply.get("note"):
         parts.append(f"🗂 {esc(reply['note'])}")
