@@ -1,4 +1,4 @@
-"""The bot speaks the language chosen on the Dayla site ("ru" or "en").
+"""The bot speaks the language chosen on the Deyla site ("ru" or "en").
 
 The language is set for each update by LanguageMiddleware (and for each notification by the worker), so the
 templates and keyboards only ask tr("Сегодня", "Today")."""

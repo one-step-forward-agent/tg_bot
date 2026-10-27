@@ -68,7 +68,8 @@ async def menu(message: Message) -> None:
 
 
 async def render_done(chat_id: int, scope: str) -> tuple[str, object]:
-    reply = await backend.agenda(chat_id, scope)
+    # The checklist: for today it also lists the unticked tasks of the last days, so they can be ticked here
+    reply = await backend.agenda(chat_id, scope, mark=True)
     return messages.done_list(reply), done_keyboard(reply, scope)
 
 
@@ -245,7 +246,7 @@ async def move_to(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data.startswith("mw:"))
 async def move_typed(callback: CallbackQuery) -> None:
-    """"✍️ Написать дату": the next message is the new day; Dayla shows the change for confirmation."""
+    """"✍️ Написать дату": the next message is the new day; Deyla shows the change for confirmation."""
     if not isinstance(callback.message, Message):
         await callback.answer()
         return

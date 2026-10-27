@@ -26,6 +26,7 @@ from bot.keyboards import (
     proposal_keyboard,
     rated,
     reminder_set_keyboard,
+    research_keyboard,
     targets_keyboard,
     updated_keyboard,
     with_rating,
@@ -79,6 +80,14 @@ async def deliver(message: Message, reply: dict) -> None:
         await message.answer(messages.answer(reply["text"]))
     else:
         await message.answer(messages.nothing(), reply_markup=with_rating(None, rating))
+    if reply.get("question"):
+        # A question of the team goes with the answer as its own message, so its buttons do not mix with the reply's
+        await message.answer(messages.research_question(reply["question"]), reply_markup=research_keyboard(reply["question"], rating))
+
+
+# «Своими словами» under a question: the prompt's message id → (question id, chat message id). In memory: after a
+# restart the reply goes to the chat, where the assistant still takes it as the answer (agent action answer_question)
+own_answers: dict[int, tuple[int, int]] = {}
 
 
 def proposal_markup(reply: dict):
@@ -123,7 +132,52 @@ async def ensure_linked(message: Message) -> bool:
 
 @router.message(F.text & ~F.text.startswith("/"))
 async def text_message(message: Message) -> None:
+    prompt = message.reply_to_message.message_id if message.reply_to_message else None
+    if prompt in own_answers:
+        question_id, chat_message_id = own_answers.pop(prompt)
+        try:
+            await backend.answer_question(message.chat.id, question_id, answer=message.text, message_id=chat_message_id)
+        except BackendError as error:
+            await report(message, error)
+            return
+        await message.answer(messages.answer(messages.short("research_thanks")))
+        return
     await ask(message, message.text)
+
+
+@router.callback_query(F.data.startswith("rq:"))
+async def research_answer(callback: CallbackQuery) -> None:
+    """A button under a team question: an offered answer, «Своими словами» or «Пропустить»."""
+    if not isinstance(callback.message, Message):
+        await callback.answer()
+        return
+    try:
+        _, question_id, choice, chat_message_id = callback.data.split(":")
+        question_id, chat_message_id = int(question_id), int(chat_message_id)
+    except ValueError:
+        await callback.answer()
+        return
+    if choice == "own":
+        prompt = await callback.message.answer(messages.research_own_words(), reply_markup=ForceReply(selective=True))
+        own_answers[prompt.message_id] = (question_id, chat_message_id)
+        await callback.answer()
+        return
+    option = next(
+        (button.text for row in (callback.message.reply_markup.inline_keyboard if callback.message.reply_markup else []) for button in row if button.callback_data == callback.data),
+        None,
+    )
+    skip = choice == "skip"
+    try:
+        await backend.answer_question(callback.message.chat.id, question_id, option=None if skip else option, skip=skip, message_id=chat_message_id)
+    except BackendError:
+        await callback.answer(messages.short("try_again"), show_alert=True)
+        return
+    text = (callback.message.html_text or "").split("\n\n")[0]
+    try:
+        await callback.message.edit_text(f"{text}\n\n{messages.research_answered(None if skip else option)}", reply_markup=None)
+    except TelegramBadRequest:
+        pass
+    await callback.answer(messages.short("research_skipped" if skip else "research_thanks"))
 
 
 @router.message(Command("advice", "analysis"))

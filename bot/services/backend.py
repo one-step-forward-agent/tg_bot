@@ -81,8 +81,15 @@ class DaylaBackend:
     async def rate(self, chat_id: int, message_id: int, value: int) -> dict:
         return await self._request("POST", f"/internal/bot/chat/{chat_id}/messages/{message_id}/rating", {"value": value})
 
-    async def agenda(self, chat_id: int, scope: str) -> dict:
-        return await self._request("GET", f"/internal/bot/chat/{chat_id}/agenda/{scope}")
+    async def answer_question(self, chat_id: int, question_id: int, option: str | None = None, answer: str | None = None, skip: bool = False, message_id: int | None = None) -> dict:
+        return await self._request(
+            "POST",
+            f"/internal/bot/chat/{chat_id}/questions/{question_id}/answer",
+            {"option": option, "answer": answer, "skip": skip, "message_id": message_id or None},
+        )
+
+    async def agenda(self, chat_id: int, scope: str, mark: bool = False) -> dict:
+        return await self._request("GET", f"/internal/bot/chat/{chat_id}/agenda/{scope}" + ("?mark=true" if mark else ""))
 
     async def undo(self, chat_id: int, event_ids: list[int]) -> int:
         return (await self._request("POST", f"/internal/bot/chat/{chat_id}/undo", {"event_ids": event_ids}))["deleted"]

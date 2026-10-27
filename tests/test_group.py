@@ -1,4 +1,4 @@
-"""Dayla in a group: only a mention or an answer to it is a request, made for the person who wrote it."""
+"""Deyla in a group: only a mention or an answer to it is a request, made for the person who wrote it."""
 
 from types import SimpleNamespace
 
@@ -20,5 +20,5 @@ def test_an_answer_to_a_colleague_carries_their_message():
 
 
 def test_an_answer_to_dayla_is_the_request_itself():
-    quoted = SimpleNamespace(text="Записала", caption=None, from_user=SimpleNamespace(full_name="Dayla"))
+    quoted = SimpleNamespace(text="Записала", caption=None, from_user=SimpleNamespace(full_name="Deyla"))
     assert request_text(message("и созвон в 15", reply_to=quoted), "dayla_bot", True) == "и созвон в 15"

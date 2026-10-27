@@ -252,12 +252,12 @@ def proposal(reply: dict) -> str:
 
 
 def target_title(reply: dict) -> str | None:
-    """Where the new tasks of a proposal go — Dayla and the ticked calendars — when a calendar is connected."""
+    """Where the new tasks of a proposal go — Deyla and the ticked calendars — when a calendar is connected."""
     targets = reply.get("targets") or []
     if not targets or any(event.get("event_id") for event in reply["events"]):
         return None
     chosen = reply.get("calendars") or []
-    return ", ".join(["Dayla", *(option["title"] for option in targets if option["slug"] in chosen)])
+    return ", ".join(["Deyla", *(option["title"] for option in targets if option["slug"] in chosen)])
 
 
 def edit_prompt(data: dict) -> str:
@@ -405,8 +405,8 @@ def agenda_body(reply: dict) -> str:
         if len("\n".join(lines + block)) > MESSAGE_LIMIT:
             rest = count - shown
             lines.append(tr(
-                f"\n<i>…и ещё {rest} {plural(rest, 'событие', 'события', 'событий')} — откройте календарь в Dayla.</i>",
-                f"\n<i>…and {rest} more {plural_en(rest, 'event', 'events')} — open the calendar in Dayla.</i>",
+                f"\n<i>…и ещё {rest} {plural(rest, 'событие', 'события', 'событий')} — откройте календарь в Deyla.</i>",
+                f"\n<i>…and {rest} more {plural_en(rest, 'event', 'events')} — open the calendar in Deyla.</i>",
             ))
             break
         lines.extend(block)
@@ -479,6 +479,20 @@ def answer(text: str) -> str:
     return f"💬 {rich(text)}"
 
 
+def research_question(question: dict, result: str | None = None) -> str:
+    """A question the team asks to learn where to take Deyla; `result`: the answer given, shown after it."""
+    text = f"🙋 <b>{tr('Вопрос от команды Deyla', 'A question from the Deyla team')}</b>\n{esc(question['text'])}"
+    return f"{text}\n\n{result}" if result else text
+
+
+def research_answered(answer: str | None) -> str:
+    return f"✓ {tr('Ваш ответ', 'Your answer')}: <i>{esc(answer)}</i>" if answer else f"<i>{tr('Пропущено', 'Skipped')}</i>"
+
+
+def research_own_words() -> str:
+    return tr("Напишите ваш ответ на вопрос одним сообщением 👇", "Write your answer to the question in one message 👇")
+
+
 def not_found(text: str) -> str:
     return f"🔎 {esc(text)}"
 
@@ -492,7 +506,7 @@ def nothing() -> str:
 
 def undone(count: int) -> str:
     if not count:
-        return tr("↩️ Эти события уже удалены или изменены в Dayla.", "↩️ These events are already deleted or changed in Dayla.")
+        return tr("↩️ Эти события уже удалены или изменены в Deyla.", "↩️ These events are already deleted or changed in Deyla.")
     return tr(
         f"↩️ <b>Отменено</b> — {count} {plural(count, 'событие удалено', 'события удалены', 'событий удалено')} из календаря.",
         f"↩️ <b>Undone</b> — {count} {plural_en(count, 'event', 'events')} removed from the calendar.",
@@ -514,10 +528,10 @@ def welcome_unlinked(has_link_button: bool) -> str:
         how = (
             "Press the button below, sign in and choose <b>Account → Telegram → Connect</b>."
             if has_link_button
-            else "Open the Dayla site → <b>Account → Telegram</b> and press <b>“Connect Telegram”</b>."
+            else "Open the Deyla site → <b>Account → Telegram</b> and press <b>“Connect Telegram”</b>."
         )
         return (
-            "👋 <b>Hi! I'm Dayla</b> — an assistant that plans your day.\n\n"
+            "👋 <b>Hi! I'm Deyla</b> — an assistant that plans your day.\n\n"
             "Once your account is connected, here you can:\n"
             "💬 plan in plain words, by voice or with a document\n"
             "📅 see the plan for the day and the week\n"
@@ -527,10 +541,10 @@ def welcome_unlinked(has_link_button: bool) -> str:
     how = (
         "Нажмите кнопку ниже, войдите и выберите <b>Аккаунт → Telegram → Подключить</b>."
         if has_link_button
-        else "Откройте сайт Dayla → <b>Аккаунт → Telegram</b> и нажмите <b>«Подключить Telegram»</b>."
+        else "Откройте сайт Deyla → <b>Аккаунт → Telegram</b> и нажмите <b>«Подключить Telegram»</b>."
     )
     return (
-        "👋 <b>Привет! Я Dayla</b> — ассистент, который планирует ваш день.\n\n"
+        "👋 <b>Привет! Я Deyla</b> — ассистент, который планирует ваш день.\n\n"
         "После подключения аккаунта здесь можно:\n"
         "💬 планировать обычными словами, голосом или документом\n"
         "📅 смотреть план на день и неделю\n"
@@ -628,8 +642,8 @@ def help_text() -> str:
 
 def link_failed() -> str:
     return tr(
-        "⚠️ <b>Ссылка недействительна или устарела</b>\n\nПолучите новую в Dayla: <b>Аккаунт → Telegram → Подключить</b>.",
-        "⚠️ <b>The link is invalid or has expired</b>\n\nGet a new one in Dayla: <b>Account → Telegram → Connect</b>.",
+        "⚠️ <b>Ссылка недействительна или устарела</b>\n\nПолучите новую в Deyla: <b>Аккаунт → Telegram → Подключить</b>.",
+        "⚠️ <b>The link is invalid or has expired</b>\n\nGet a new one in Deyla: <b>Account → Telegram → Connect</b>.",
     )
 
 
@@ -646,25 +660,25 @@ def assistant_unavailable() -> str:
 
 def account_unlinked() -> str:
     return tr(
-        "👋 <b>Telegram отключён от Dayla.</b>\n\nНапоминания больше не придут. Подключить снова можно в настройках на сайте.",
-        "👋 <b>Telegram is disconnected from Dayla.</b>\n\nReminders won't come any more. You can connect again in the settings on the site.",
+        "👋 <b>Telegram отключён от Deyla.</b>\n\nНапоминания больше не придут. Подключить снова можно в настройках на сайте.",
+        "👋 <b>Telegram is disconnected from Deyla.</b>\n\nReminders won't come any more. You can connect again in the settings on the site.",
     )
 
 
 def group_help(username: str) -> str:
     return tr(
-        f"Я Dayla. Напишите <b>@{esc(username)}</b> и что запланировать — «@{esc(username)} отчёт к пятнице», "
+        f"Я Deyla. Напишите <b>@{esc(username)}</b> и что запланировать — «@{esc(username)} отчёт к пятнице», "
         "или ответьте так на сообщение коллеги: задача попадёт в ваш календарь, черновик пришлю в личку.",
-        f"I'm Dayla. Write <b>@{esc(username)}</b> and what to plan — “@{esc(username)} report by Friday”, "
+        f"I'm Deyla. Write <b>@{esc(username)}</b> and what to plan — “@{esc(username)} report by Friday”, "
         "or reply like that to a colleague's message: the task goes to your calendar, and I'll send the draft in a private chat.",
     )
 
 
 def group_not_linked(username: str) -> str:
     return tr(
-        f"Чтобы я записывала ваши задачи, откройте меня в личке — t.me/{esc(username)} — и подключите Dayla. "
+        f"Чтобы я записывала ваши задачи, откройте меня в личке — t.me/{esc(username)} — и подключите Deyla. "
         "Потом просто упоминайте меня здесь.",
-        f"For me to record your tasks, open a private chat with me — t.me/{esc(username)} — and connect Dayla. "
+        f"For me to record your tasks, open a private chat with me — t.me/{esc(username)} — and connect Deyla. "
         "Then just mention me here.",
     )
 
@@ -749,7 +763,7 @@ def outdated(hint: str = "") -> str:
 
 
 def not_linked_alert() -> str:
-    return tr("Telegram не подключён к Dayla", "Telegram isn't connected to Dayla")
+    return tr("Telegram не подключён к Deyla", "Telegram isn't connected to Deyla")
 
 
 def task_gone() -> str:
@@ -789,6 +803,8 @@ SHORT = {
     "try_again": ("Не получилось — попробуйте ещё раз", "Didn't work — please try again"),
     "analyse_week": ("проанализируй мою неделю", "analyse my week"),
     "plan_this": ("Запланируй это", "Plan this"),
+    "research_thanks": ("Спасибо за ответ!", "Thanks for the answer!"),
+    "research_skipped": ("Хорошо, спрошу в другой раз", "OK, I'll ask another time"),
 }
 
 

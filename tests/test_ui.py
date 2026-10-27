@@ -407,7 +407,7 @@ async def test_proposal_shows_the_end_and_where_tasks_go(backend):
     await chat.deliver(message, reply)
     text = message.answer.call_args.args[0]
     assert_telegram_html(text)
-    assert "Куда: <b>Dayla, Яндекс Календарь</b>" in text
+    assert "Куда: <b>Deyla, Яндекс Календарь</b>" in text
     assert "dr:42:to" in callback_data(message.answer.call_args.kwargs["reply_markup"])
 
     backend.draft = AsyncMock(return_value=reply)
@@ -422,7 +422,7 @@ async def test_proposal_shows_the_end_and_where_tasks_go(backend):
     callback = fake_callback("dr:42:to:google")
     await chat.draft_action(callback)
     backend.draft_calendars.assert_awaited_with(100, 42, ["yandex", "google"])
-    assert "Куда: <b>Dayla, Google Calendar, Яндекс Календарь</b>" in callback.message.edit_text.call_args.args[0]
+    assert "Куда: <b>Deyla, Google Calendar, Яндекс Календарь</b>" in callback.message.edit_text.call_args.args[0]
     assert callback.message.edit_text.call_args.kwargs["reply_markup"].inline_keyboard[0][0].text == "☑️ Google Calendar"
 
     # And unticks it again
@@ -471,3 +471,19 @@ async def test_found_tasks_come_with_the_assistants_comment(backend):
     text = message.answer.call_args.args[0]
     assert_telegram_html(text)
     assert text.startswith("💬 Ближайшая — &lt;завтра&gt;") and "Встреча &lt;с&gt; Анной" in text
+
+
+def test_a_team_question_has_its_answers_own_words_and_skip():
+    from bot.keyboards import research_keyboard
+
+    question = {"id": 7, "text": "Пользуетесь ли вы <бумажным> ежедневником?", "options": ["Да", "Нет"]}
+    text = messages.research_question(question)
+    assert "Вопрос от команды Deyla" in text and "&lt;бумажным&gt;" in text
+    rows = research_keyboard(question, 42).inline_keyboard
+    assert [[button.text for button in row] for row in rows] == [["Да"], ["Нет"], ["✍️ Своими словами", "Пропустить"]]
+    assert [button.callback_data for row in rows for button in row] == ["rq:7:0:42", "rq:7:1:42", "rq:7:own:42", "rq:7:skip:42"]
+    # Every callback fits Telegram's 64 bytes even with long ids
+    assert all(len(button.callback_data.encode()) <= 64 for row in research_keyboard({"id": 10**9, "options": ["x"] * 8}, 10**12).inline_keyboard for button in row)
+    # A question without options: only own words and skip
+    assert len(research_keyboard({"id": 1, "options": []}, None).inline_keyboard) == 1
+    assert "Ваш ответ" in messages.research_answered("Да") and "Пропущено" in messages.research_answered(None)

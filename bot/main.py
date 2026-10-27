@@ -24,7 +24,7 @@ COMMANDS = [
     BotCommand(command="analysis", description="Анализ недели"),
     BotCommand(command="reminders", description="Настройки напоминаний"),
     BotCommand(command="help", description="Что я умею"),
-    BotCommand(command="unlink", description="Отключить Telegram от Dayla"),
+    BotCommand(command="unlink", description="Отключить Telegram от Deyla"),
 ]
 COMMANDS_EN = [
     BotCommand(command="today", description="Today's plan"),
@@ -36,7 +36,7 @@ COMMANDS_EN = [
     BotCommand(command="analysis", description="The week's analysis"),
     BotCommand(command="reminders", description="Reminder settings"),
     BotCommand(command="help", description="What I can do"),
-    BotCommand(command="unlink", description="Disconnect Telegram from Dayla"),
+    BotCommand(command="unlink", description="Disconnect Telegram from Deyla"),
 ]
 
 
@@ -46,7 +46,7 @@ async def main() -> None:
         default=DefaultBotProperties(parse_mode=ParseMode.HTML, link_preview=LinkPreviewOptions(is_disabled=True)),
     )
     dispatcher = Dispatcher()
-    # Every answer in the language chosen on the Dayla site
+    # Every answer in the language chosen on the Deyla site
     dispatcher.message.outer_middleware(LanguageMiddleware())
     dispatcher.callback_query.outer_middleware(LanguageMiddleware())
     dispatcher.include_routers(account.router, agenda.router, notifications.router, chat.router, group.router)
@@ -54,15 +54,15 @@ async def main() -> None:
     # Telegram apps in English see the English menu before the account is linked
     await bot.set_my_commands(COMMANDS_EN, language_code="en")
     await bot.set_my_description(
-        "Dayla — ИИ-ассистент для планирования. Пишите планы словами или голосом, "
+        "Deyla — ИИ-ассистент для планирования. Пишите планы словами или голосом, "
         "пересылайте билеты и скриншоты, спрашивайте о расписании и получайте напоминания. В рабочем чате упомяните "
-        "меня — задача попадёт в ваш календарь. Подключите аккаунт на сайте Dayla."
+        "меня — задача попадёт в ваш календарь. Подключите аккаунт на сайте Deyla."
     )
     await bot.set_my_short_description("Планируйте день за минуту: чат, расписание и напоминания")
     await bot.set_my_description(
-        "Dayla is an AI planning assistant. Write your plans in words or by voice, forward tickets and screenshots, "
+        "Deyla is an AI planning assistant. Write your plans in words or by voice, forward tickets and screenshots, "
         "ask about your schedule and get reminders. In a work chat, mention me — the task goes to your calendar. "
-        "Connect your account on the Dayla site.",
+        "Connect your account on the Deyla site.",
         language_code="en",
     )
     await bot.set_my_short_description("Plan your day in a minute: chat, schedule and reminders", language_code="en")

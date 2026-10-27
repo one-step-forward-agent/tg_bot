@@ -1,7 +1,7 @@
-"""Dayla in a group chat (a work chat, a family chat).
+"""Deyla in a group chat (a work chat, a family chat).
 
 Telegram gives a bot in a group only the messages that mention it or answer it, so nothing else is read. Mentioned
-— «@dayla_bot запиши: отчёт к пятнице», or as an answer to a colleague's message with the request — Dayla plans it
+— «@dayla_bot запиши: отчёт к пятнице», or as an answer to a colleague's message with the request — Deyla plans it
 for the person who asked, in their own calendar. The draft and its buttons go to that person's private chat, and
 the group gets one short line: the plan of one member is not shown to everyone.
 """
@@ -59,7 +59,7 @@ async def group_message(message: Message, bot: Bot) -> None:
     if not request:
         await message.reply(messages.group_help(me.username))
         return
-    # In Telegram a person's private chat with the bot has the person's id: that is the linked Dayla account
+    # In Telegram a person's private chat with the bot has the person's id: that is the linked Deyla account
     person = message.from_user.id
     try:
         reply = await backend.chat(person, request)

@@ -83,7 +83,7 @@ def link_keyboard(app_url: str | None) -> InlineKeyboardMarkup | None:
     url = public_url(app_url)
     if not url:
         return None
-    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=tr("🔗 Подключить в Dayla", "🔗 Connect in Dayla"), url=f"{url}/app/account#telegram")]])
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=tr("🔗 Подключить в Deyla", "🔗 Connect in Deyla"), url=f"{url}/app/account#telegram")]])
 
 
 def created_keyboard(event_ids: list[int], events: list[dict], app_url: str | None) -> InlineKeyboardMarkup | None:
@@ -95,7 +95,7 @@ def created_keyboard(event_ids: list[int], events: list[dict], app_url: str | No
     if not url and public_url(app_url) and events:
         url = f"{app_url}/app/calendar?day={events[0]['start'][:10]}"
     if url:
-        row.append(InlineKeyboardButton(text=tr("↗️ Открыть в Dayla", "↗️ Open in Dayla"), url=url))
+        row.append(InlineKeyboardButton(text=tr("↗️ Открыть в Deyla", "↗️ Open in Deyla"), url=url))
     return InlineKeyboardMarkup(inline_keyboard=[row]) if row else None
 
 
@@ -108,7 +108,7 @@ def agenda_keyboard(current: str | None, app_url: str | None) -> InlineKeyboardM
         ])
     url = public_url(app_url)
     if url:
-        rows.append([InlineKeyboardButton(text=tr("↗️ Календарь в Dayla", "↗️ Calendar in Dayla"), url=f"{url}/app/calendar")])
+        rows.append([InlineKeyboardButton(text=tr("↗️ Календарь в Deyla", "↗️ Calendar in Deyla"), url=f"{url}/app/calendar")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -132,6 +132,20 @@ def reminder_set_keyboard(reminders: list[dict]) -> InlineKeyboardMarkup | None:
         for item in reminders[:5]
     ]
     return InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
+
+
+def research_keyboard(question: dict, message_id: int | None) -> InlineKeyboardMarkup:
+    """The answers offered as buttons, then «своими словами» and «пропустить». The chosen answer is the button's own
+    text, so the bot keeps nothing; `message_id` is the chat message the question came with."""
+    tail = f":{message_id or 0}"
+    rows = [[InlineKeyboardButton(text=option[:60], callback_data=f"rq:{question['id']}:{index}{tail}")] for index, option in enumerate((question.get("options") or [])[:8])]
+    rows.append(
+        [
+            InlineKeyboardButton(text=tr("✍️ Своими словами", "✍️ In my own words"), callback_data=f"rq:{question['id']}:own{tail}"),
+            InlineKeyboardButton(text=tr("Пропустить", "Skip"), callback_data=f"rq:{question['id']}:skip{tail}"),
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def digest_keyboard() -> InlineKeyboardMarkup:
@@ -213,7 +227,7 @@ def updated_keyboard(events: list[dict], app_url: str | None) -> InlineKeyboardM
     url = public_url(events[0].get("url")) if len(events) == 1 else None
     if not url and public_url(app_url) and events:
         url = f"{app_url}/app/calendar?day={events[0]['start'][:10]}"
-    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=tr("↗️ Открыть в Dayla", "↗️ Open in Dayla"), url=url)]]) if url else None
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=tr("↗️ Открыть в Deyla", "↗️ Open in Deyla"), url=url)]]) if url else None
 
 
 def settings_keyboard(values: dict, app_url: str | None) -> InlineKeyboardMarkup:
@@ -235,12 +249,12 @@ def settings_keyboard(values: dict, app_url: str | None) -> InlineKeyboardMarkup
     ]
     url = public_url(app_url)
     if url:
-        rows.append([InlineKeyboardButton(text=tr("⚙️ Все настройки в Dayla", "⚙️ All settings in Dayla"), url=f"{url}/app/account#reminders")])
+        rows.append([InlineKeyboardButton(text=tr("⚙️ Все настройки в Deyla", "⚙️ All settings in Deyla"), url=f"{url}/app/account#reminders")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def proposal_keyboard(draft_id: int, count: int, change: bool = False, target: str | None = None) -> InlineKeyboardMarkup:
-    """target: where the tasks go ("Dayla и Google Calendar") when there is a choice; adds the button to change it."""
+    """target: where the tasks go ("Deyla и Google Calendar") when there is a choice; adds the button to change it."""
     add = tr("✅ Сохранить", "✅ Save") if change else tr("✅ Добавить", "✅ Add") if count == 1 else tr(f"✅ Добавить все ({count})", f"✅ Add all ({count})")
     rows = [[
         InlineKeyboardButton(text=add, callback_data=f"dr:{draft_id}:ok"),
@@ -257,7 +271,7 @@ def proposal_keyboard(draft_id: int, count: int, change: bool = False, target: s
 
 
 def targets_keyboard(draft_id: int, targets: list[dict], chosen: list[str]) -> InlineKeyboardMarkup:
-    """Checkboxes for the connected calendars: a press ticks or unticks one; tasks are always in Dayla."""
+    """Checkboxes for the connected calendars: a press ticks or unticks one; tasks are always in Deyla."""
     rows = [
         [InlineKeyboardButton(text=("☑️ " if option["slug"] in chosen else "⬜ ") + option["title"], callback_data=f"dr:{draft_id}:to:{option['slug']}")]
         for option in targets

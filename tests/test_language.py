@@ -1,4 +1,4 @@
-"""The bot speaks the language chosen on the Dayla site; before linking, the language of the Telegram app."""
+"""The bot speaks the language chosen on the Deyla site; before linking, the language of the Telegram app."""
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
