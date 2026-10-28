@@ -134,6 +134,18 @@ def reminder_set_keyboard(reminders: list[dict]) -> InlineKeyboardMarkup | None:
     return InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
 
 
+REPLY_PREFIX = "sr:"
+
+
+def with_replies(markup: InlineKeyboardMarkup | None, replies: list[str] | None) -> InlineKeyboardMarkup | None:
+    """The assistant's ready answers to its question or offer, a button each above the rest; the pressed button's
+    own text is sent, so the bot keeps nothing."""
+    rows = [[InlineKeyboardButton(text=text[:60], callback_data=f"{REPLY_PREFIX}{index}")] for index, text in enumerate((replies or [])[:4])]
+    if not rows:
+        return markup
+    return InlineKeyboardMarkup(inline_keyboard=[*rows, *(markup.inline_keyboard if markup else [])])
+
+
 def research_keyboard(question: dict, message_id: int | None) -> InlineKeyboardMarkup:
     """The answers offered as buttons, then «своими словами» and «пропустить». The chosen answer is the button's own
     text, so the bot keeps nothing; `message_id` is the chat message the question came with."""

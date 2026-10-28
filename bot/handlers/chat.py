@@ -6,7 +6,7 @@ import tempfile
 from aiogram import Bot, F, Router
 from aiogram.enums import ChatType, ContentType
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import CallbackQuery, ForceReply, Message
+from aiogram.types import CallbackQuery, ForceReply, InlineKeyboardMarkup, Message
 from aiogram.utils.chat_action import ChatActionSender
 
 from bot.handlers.account import report
@@ -30,6 +30,8 @@ from bot.keyboards import (
     targets_keyboard,
     updated_keyboard,
     with_rating,
+    with_replies,
+    REPLY_PREFIX,
 )
 from bot.services import site
 from bot.services.backend import BackendError, backend
@@ -48,6 +50,8 @@ async def deliver(message: Message, reply: dict) -> None:
     app_url = await site.app_url()
     kind = reply.get("kind")
     rating = reply.get("message_id")
+    # The assistant asks or offers something: its ready answers as buttons
+    replies = reply.get("replies")
     if kind == "proposal":
         await message.answer(messages.proposal(reply), reply_markup=proposal_markup(reply))
     elif kind == "delete_proposal":
@@ -59,7 +63,7 @@ async def deliver(message: Message, reply: dict) -> None:
     elif kind == "agenda" and reply.get("mark"):
         await message.answer(messages.done_list(reply), reply_markup=done_keyboard(reply, reply.get("scope") or "today"))
     elif kind == "agenda":
-        await message.answer(messages.agenda(reply), reply_markup=with_rating(agenda_keyboard(reply.get("scope"), app_url), rating))
+        await message.answer(messages.agenda(reply), reply_markup=with_replies(with_rating(agenda_keyboard(reply.get("scope"), app_url), rating), replies))
     elif kind == "stats":
         await message.answer(messages.stats(reply), reply_markup=with_rating(None, rating))
     elif kind == "help":
@@ -73,13 +77,13 @@ async def deliver(message: Message, reply: dict) -> None:
     elif kind == "topic":
         await message.answer(messages.topic(reply), reply_markup=topic_keyboard())
     elif kind == "answer":
-        await message.answer(messages.answer(reply["text"]), reply_markup=with_rating(None, rating))
+        await message.answer(messages.answer(reply["text"]), reply_markup=with_replies(with_rating(None, rating), replies))
     elif kind == "not_found":
-        await message.answer(messages.not_found(reply["text"]), reply_markup=with_rating(None, rating))
+        await message.answer(messages.not_found(reply["text"]), reply_markup=with_replies(with_rating(None, rating), replies))
     elif kind in ("edit_error", "cancelled"):
-        await message.answer(messages.answer(reply["text"]))
+        await message.answer(messages.answer(reply["text"]), reply_markup=with_replies(None, replies))
     else:
-        await message.answer(messages.nothing(), reply_markup=with_rating(None, rating))
+        await message.answer(messages.nothing(), reply_markup=with_replies(with_rating(None, rating), replies))
     if reply.get("question"):
         # A question of the team goes with the answer as its own message, so its buttons do not mix with the reply's
         await message.answer(messages.research_question(reply["question"]), reply_markup=research_keyboard(reply["question"], rating))
@@ -216,6 +220,28 @@ async def quick_reply(callback: CallbackQuery) -> None:
         await callback.answer()
         return
     await callback.answer()
+    await callback.message.answer(f"<i>{messages.esc(text)}</i>")
+    await ask(callback.message, text)
+
+
+@router.callback_query(F.data.startswith(REPLY_PREFIX))
+async def ready_reply(callback: CallbackQuery) -> None:
+    """A ready answer under the assistant's question: sent as the user's message, the buttons go away."""
+    if not isinstance(callback.message, Message):
+        await callback.answer()
+        return
+    text = next(
+        (button.text for row in (callback.message.reply_markup.inline_keyboard if callback.message.reply_markup else []) for button in row if button.callback_data == callback.data),
+        None,
+    )
+    await callback.answer()
+    if not text:
+        return
+    rest = [row for row in callback.message.reply_markup.inline_keyboard if not any((button.callback_data or "").startswith(REPLY_PREFIX) for button in row)]
+    try:
+        await callback.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(inline_keyboard=rest) if rest else None)
+    except TelegramBadRequest:
+        pass
     await callback.message.answer(f"<i>{messages.esc(text)}</i>")
     await ask(callback.message, text)
 
