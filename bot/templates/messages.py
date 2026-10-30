@@ -442,8 +442,8 @@ def advice(reply: dict) -> str:
 
 def topic(reply: dict) -> str:
     return tr(
-        f"💡 <b>Обсуждаем: {esc(reply['title'])}</b>\n{rich(reply['text'])}\n\nСпросите, что непонятно, или выберите вопрос ниже.",
-        f"💡 <b>Let's discuss: {esc(reply['title'])}</b>\n{rich(reply['text'])}\n\nAsk what's unclear, or pick a question below.",
+        f"💡 <b>{esc(reply['title'])}</b>\n\n{rich(reply.get('details') or reply['text'])}\n\nСпросите, что непонятно, или выберите вопрос ниже.",
+        f"💡 <b>{esc(reply['title'])}</b>\n\n{rich(reply.get('details') or reply['text'])}\n\nAsk what's unclear, or pick a question below.",
     )
 
 

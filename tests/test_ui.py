@@ -332,7 +332,7 @@ async def test_shared_commands_render_like_the_web_chat(backend):
         if name == "reminders":
             assert "rs:evening" in data
         if name == "topic":
-            assert data == ["qr:0", "qr:1", "qr:2"]
+            assert data == ["qr:0", "qr:1"]
         if name == "help":
             assert "Созвон &lt;завтра&gt;" in message.answer.call_args.args[0]
 
@@ -361,19 +361,18 @@ async def test_reminder_brings_its_file(backend):
 
 
 async def test_discuss_advice_and_quick_reply(backend):
-    backend.topic = AsyncMock(return_value={"kind": "topic", "title": "Скоро дедлайн", "text": "Отчёт"})
-    backend.chat = AsyncMock(return_value={"kind": "answer", "text": "Три шага", "message_id": 2})
+    backend.topic = AsyncMock(return_value={"kind": "topic", "title": "Скоро дедлайн", "text": "Отчёт", "details": "1. **Начать** отчёт сегодня"})
+    backend.chat = AsyncMock()
     callback = fake_callback("adv:1", text="💡 Советы на сегодня")
     await chat.discuss_advice(callback)
     backend.topic.assert_awaited_with(100, 1)
-    # "Как это сделать?" opens the topic and asks the question at once
+    # "Подробнее" shows the recommendation explained in detail; nothing is asked on the user's behalf
     sent = [call.args[0] for call in callback.message.answer.call_args_list]
-    assert "Обсуждаем" in sent[0]
-    backend.chat.assert_awaited_with(100, "Как это сделать?")
-    assert "Три шага" in sent[-1]
+    assert len(sent) == 1 and "Скоро дедлайн" in sent[0] and "<b>Начать</b>" in sent[0]
+    backend.chat.assert_not_awaited()
 
     backend.chat = AsyncMock(return_value={"kind": "answer", "text": "Вот план", "message_id": 3})
-    callback = fake_callback("qr:1", text="💡 Обсуждаем")
+    callback = fake_callback("qr:0", text="💡 Скоро дедлайн")
     await chat.quick_reply(callback)
     backend.chat.assert_awaited_with(100, "Помоги перепланировать")
     assert "Вот план" in callback.message.answer.call_args.args[0]

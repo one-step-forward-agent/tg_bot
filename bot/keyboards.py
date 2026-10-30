@@ -22,8 +22,8 @@ MENU_TODAY, MENU_TOMORROW, MENU_WEEK = set(MENU["today"]), set(MENU["tomorrow"])
 MENU_DONE, MENU_STATS, MENU_ADVICE, MENU_ANALYSIS = set(MENU["done"]), set(MENU["stats"]), set(MENU["advice"]), set(MENU["analysis"])
 MENU_REMINDERS, MENU_HELP = set(MENU["reminders"]), set(MENU["help"])
 # The same quick replies as under a recommendation in the web chat
-TOPIC_REPLIES = ("Как это сделать?", "Помоги перепланировать", "Что можно перенести?")
-TOPIC_REPLIES_EN = ("How do I do it?", "Help me replan", "What can I move?")
+TOPIC_REPLIES = ("Помоги перепланировать", "Что можно перенести?")
+TOPIC_REPLIES_EN = ("Help me replan", "What can I move?")
 SCOPES = {"today": ("Сегодня", "Today"), "tomorrow": ("Завтра", "Tomorrow"), "week": ("Неделя", "Week")}
 CALLBACK_LIMIT = 64
 
@@ -190,8 +190,8 @@ def rated(markup: InlineKeyboardMarkup | None, message_id: int, value: int) -> I
 
 
 def advice_keyboard(count: int, message_id: int | None) -> InlineKeyboardMarkup:
-    # "How do I do it?" asks the assistant how to apply that piece of advice
-    rows = [[InlineKeyboardButton(text=tr(f"💬 Как сделать {index + 1}?", f"💬 How to do {index + 1}?") if count > 1 else f"💬 {topic_replies()[0]}", callback_data=f"adv:{index}") for index in range(min(count, 3))]]
+    # "Подробнее" opens that piece of advice explained in detail
+    rows = [[InlineKeyboardButton(text=tr(f"💬 Подробнее {index + 1}", f"💬 More on {index + 1}") if count > 1 else tr("💬 Подробнее", "💬 More detail"), callback_data=f"adv:{index}") for index in range(min(count, 3))]]
     return with_rating(InlineKeyboardMarkup(inline_keyboard=rows), message_id)
 
 
