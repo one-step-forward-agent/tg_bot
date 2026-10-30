@@ -475,6 +475,11 @@ def reminder_cancelled(text: str) -> str:
     return f"🔕 <i>{esc(text)}</i>"
 
 
+def friend_card(card: dict) -> str:
+    """A friend's task or invitation: the backend writes the card's text with **bold** and _italic_."""
+    return rich(card.get("text") or "")
+
+
 def answer(text: str) -> str:
     return f"💬 {rich(text)}"
 

@@ -19,6 +19,7 @@ from bot.keyboards import (
     created_keyboard,
     delete_keyboard,
     done_keyboard,
+    friend_keyboard,
     settings_keyboard,
     topic_keyboard,
     expand_ids,
@@ -74,6 +75,8 @@ async def deliver(message: Message, reply: dict) -> None:
         await message.answer(messages.reminder_settings(None, reply["settings"]), reply_markup=settings_keyboard(reply["settings"], app_url))
     elif kind == "reminder":
         await message.answer(messages.reminder_set(reply), reply_markup=with_rating(reminder_set_keyboard(reply.get("reminders") or []), rating))
+    elif kind in ("friend_task", "friend_invite", "team_task"):
+        await message.answer(messages.friend_card(reply), reply_markup=friend_keyboard(reply))
     elif kind == "topic":
         await message.answer(messages.topic(reply), reply_markup=topic_keyboard())
     elif kind == "answer":

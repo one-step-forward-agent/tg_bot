@@ -157,5 +157,16 @@ class DaylaBackend:
     async def snooze(self, notification_id: int, chat_id: int, minutes: int) -> None:
         await self._request("POST", f"/internal/bot/notifications/{notification_id}/snooze", {"chat_id": chat_id, "minutes": minutes})
 
+    async def friend_task(self, chat_id: int, task_id: int, action: str) -> dict:
+        """A button under a friend's task: accept, reject, block, start, cancel, check_on, check_off."""
+        return await self._request("POST", f"/internal/bot/chat/{chat_id}/friend-tasks/{task_id}/{action}")
+
+    async def team_task(self, chat_id: int, task_id: int, action: str) -> dict:
+        """A button under a team's task: accept, reject, start, done, check_on, check_off."""
+        return await self._request("POST", f"/internal/bot/chat/{chat_id}/team-tasks/{task_id}/{action}")
+
+    async def friend_invite(self, chat_id: int, friend_id: int, decision: str) -> dict:
+        return await self._request("POST", f"/internal/bot/chat/{chat_id}/friends/{friend_id}/{decision}")
+
 
 backend = DaylaBackend()

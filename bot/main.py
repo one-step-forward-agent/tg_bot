@@ -7,7 +7,7 @@ from aiogram.enums import ParseMode
 from aiogram.types import BotCommand, LinkPreviewOptions
 
 from bot.config import settings
-from bot.handlers import account, agenda, chat, group, notifications
+from bot.handlers import account, agenda, chat, friends, group, notifications
 from bot.i18n import LanguageMiddleware
 from bot.services.backend import backend
 
@@ -49,7 +49,7 @@ async def main() -> None:
     # Every answer in the language chosen on the Deyla site
     dispatcher.message.outer_middleware(LanguageMiddleware())
     dispatcher.callback_query.outer_middleware(LanguageMiddleware())
-    dispatcher.include_routers(account.router, agenda.router, notifications.router, chat.router, group.router)
+    dispatcher.include_routers(account.router, agenda.router, notifications.router, friends.router, chat.router, group.router)
     await bot.set_my_commands(COMMANDS)
     # Telegram apps in English see the English menu before the account is linked
     await bot.set_my_commands(COMMANDS_EN, language_code="en")

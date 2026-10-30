@@ -7,7 +7,7 @@ from aiogram.types import BufferedInputFile, CallbackQuery, Message
 
 from bot.config import settings
 from bot.i18n import using
-from bot.keyboards import checkin_keyboard, deadline_keyboard, digest_keyboard, evening_keyboard, reminder_keyboard
+from bot.keyboards import checkin_keyboard, deadline_keyboard, digest_keyboard, evening_keyboard, friend_keyboard, reminder_keyboard
 from bot.services.backend import BackendError, backend
 from bot.templates import messages
 
@@ -27,6 +27,9 @@ def keyboard_for(item: dict):
         return checkin_keyboard(item["id"], item.get("payload"))
     if item.get("kind") == "evening":
         return evening_keyboard(item["id"], item.get("payload"))
+    if item.get("kind") in ("friend", "friend_start"):
+        # A friend's task, its start or an invitation: the card in the payload says which buttons
+        return friend_keyboard((item.get("payload") or {}).get("card"))
     if item.get("kind") == "deadline":
         return deadline_keyboard(item.get("event_id"), item.get("url"))
     return None

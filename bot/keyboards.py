@@ -415,3 +415,32 @@ def moved_keyboard(reply: dict) -> InlineKeyboardMarkup:
         rows.append([InlineKeyboardButton(text=tr(f"↩️ Вернуть на {moved.get('from_label') or back.strftime('%d.%m')}", f"↩️ Back to {moved.get('from_label') or back.strftime('%d.%m')}")[:60], callback_data=move_to(moved["event_id"], back))])
     rows.append([InlineKeyboardButton(text=menu("today"), callback_data="ag:today"), InlineKeyboardButton(text=menu("tomorrow"), callback_data="ag:tomorrow")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+# A friend's task or invitation (backend app.services.friends): the card says which buttons it has
+FRIEND_ACTIONS = {
+    "accept": ("a", ("✅ Принять", "✅ Accept")),
+    "reject": ("r", ("✖️ Отклонить", "✖️ Decline")),
+    "block": ("b", ("⛔ Отклонить и не присылать 10 мин", "⛔ Decline, pause for 10 min")),
+    "start": ("s", ("▶️ Начал(а)", "▶️ I've started")),
+    "cancel": ("c", ("🗑 Отменить задачу", "🗑 Cancel the task")),
+    "check_on": ("on", ("👁 Включить контроль", "👁 Turn the check on")),
+    "check_off": ("off", ("🙈 Выключить контроль", "🙈 Turn the check off")),
+    "done": ("d", ("🎉 Выполнено", "🎉 Done")),
+}
+FRIEND_CODES = {code: action for action, (code, _) in FRIEND_ACTIONS.items()}
+
+
+def friend_keyboard(card: dict | None) -> InlineKeyboardMarkup | None:
+    """A friend's task or invitation, or a team's task (the same buttons, "tt:" instead of "ft:")."""
+    card = card or {}
+    actions = card.get("actions") or []
+    prefix = "tt" if card.get("kind") == "team_task" else "ft"
+    if card.get("kind") == "friend_invite":
+        rows = [[InlineKeyboardButton(text=tr("🤝 Принять", "🤝 Accept"), callback_data=f"fi:{card['friend_id']}:a"), InlineKeyboardButton(text=tr("Отклонить", "Decline"), callback_data=f"fi:{card['friend_id']}:d")]] if "accept_friend" in actions else []
+    else:
+        rows = [[InlineKeyboardButton(text=tr(*FRIEND_ACTIONS[action][1]), callback_data=f"{prefix}:{card['task_id']}:{FRIEND_ACTIONS[action][0]}")] for action in actions if action in FRIEND_ACTIONS]
+        if len(rows) >= 2 and "accept" in actions:
+            # Accept and decline side by side, the pause under them
+            rows = [rows[0] + rows[1], *rows[2:]]
+    return InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
