@@ -11,7 +11,7 @@ from tests.test_ui import assert_telegram_html
 REQUEST = {
     "kind": "friend_task",
     "task_id": 7,
-    "actions": ["accept", "reject", "block"],
+    "actions": ["accept", "reject"],
     "text": "📨 **Маша <3** просит вас сделать задачу\n**Купить хлеб**\n🕒 завтра, 18:00–19:00\n_Ждёт ответа_",
 }
 
@@ -21,7 +21,11 @@ def buttons(markup) -> list[str]:
 
 
 def test_friend_cards_have_their_buttons():
-    assert buttons(keyboards.friend_keyboard(REQUEST)) == ["ft:7:a", "ft:7:r", "ft:7:b"]
+    assert buttons(keyboards.friend_keyboard(REQUEST)) == ["ft:7:a", "ft:7:r"]
+    # No «не присылать 10 минут» any more; its code still works under older messages
+    assert "block" not in keyboards.FRIEND_ACTIONS and keyboards.FRIEND_CODES["b"] == "block"
+    reminder = keyboards.friend_keyboard({**REQUEST, "reminder": True, "actions": ["cancel"]})
+    assert buttons(reminder) == ["ft:7:c"] and "напоминание" in reminder.inline_keyboard[0][0].text
     assert buttons(keyboards.friend_keyboard({**REQUEST, "actions": ["cancel", "check_off"]})) == ["ft:7:c", "ft:7:off"]
     assert keyboards.friend_keyboard({**REQUEST, "actions": []}) is None
     invite = {"kind": "friend_invite", "friend_id": 3, "actions": ["accept_friend", "decline_friend"], "text": "x"}
@@ -73,3 +77,40 @@ async def test_team_task_buttons_go_to_the_team(monkeypatch):
     monkeypatch.setattr(friends.backend, "team_task", call)
     await friends.friend_task(callback("tt:5:a"))
     call.assert_awaited_once_with(42, 5, "accept")
+
+
+DRAFT = {
+    "kind": "send_draft",
+    "draft_id": 12,
+    "type": "friend_reminder",
+    "actions": ["send", "edit", "cancel"],
+    "text": "🔔 Поставить напоминание другу **Олег**?\n**Позвонить врачу**\n🕒 завтра в 09:00\n_Пока не отправлено_",
+}
+
+
+def test_a_draft_has_send_cancel_and_a_link_to_change_it():
+    markup = keyboards.send_draft_keyboard(DRAFT, "https://deyla.tech")
+    assert buttons(markup) == ["sd:12:s", "sd:12:c", None]
+    assert markup.inline_keyboard[1][0].url == "https://deyla.tech/assistant"
+    assert buttons(keyboards.send_draft_keyboard(DRAFT)) == ["sd:12:s", "sd:12:c"]
+    assert keyboards.send_draft_keyboard({**DRAFT, "actions": []}) is None
+    assert_telegram_html(messages.friend_card(DRAFT))
+
+
+async def test_sending_a_draft_turns_it_into_the_friends_card(monkeypatch):
+    sent = {**REQUEST, "actions": ["cancel"], "reminder": True, "text": "🔔 Поставила напоминание. Получатель: **Олег**"}
+    call = AsyncMock(return_value=sent)
+    monkeypatch.setattr(friends.backend, "send_draft", call)
+    query = callback("sd:12:s")
+    await friends.send_draft(query)
+    call.assert_awaited_once_with(42, 12, "send")
+    keyboard = query.message.edit_text.await_args.kwargs["reply_markup"]
+    assert buttons(keyboard) == ["ft:7:c"]
+
+
+async def test_a_draft_that_cannot_be_sent_keeps_its_buttons(monkeypatch):
+    monkeypatch.setattr(friends.backend, "send_draft", AsyncMock(return_value={"kind": "answer", "text": "Олег попросил пока не присылать задачи"}))
+    query = callback("sd:12:s")
+    await friends.send_draft(query)
+    query.answer.assert_awaited_once_with("Олег попросил пока не присылать задачи", show_alert=True)
+    query.message.edit_text.assert_not_awaited()

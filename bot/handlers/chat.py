@@ -64,7 +64,7 @@ async def deliver(message: Message, reply: dict) -> None:
     elif kind == "agenda" and reply.get("mark"):
         await message.answer(messages.done_list(reply), reply_markup=done_keyboard(reply, reply.get("scope") or "today"))
     elif kind == "agenda":
-        await message.answer(messages.agenda(reply), reply_markup=with_replies(with_rating(agenda_keyboard(reply.get("scope"), app_url), rating), replies))
+        await message.answer(messages.agenda(reply), reply_markup=with_replies(with_rating(agenda_keyboard(reply.get("scope"), app_url, reply), rating), replies))
     elif kind == "stats":
         await message.answer(messages.stats(reply), reply_markup=with_rating(None, rating))
     elif kind == "help":
@@ -77,6 +77,11 @@ async def deliver(message: Message, reply: dict) -> None:
         await message.answer(messages.reminder_set(reply), reply_markup=with_rating(reminder_set_keyboard(reply.get("reminders") or []), rating))
     elif kind in ("friend_task", "friend_invite", "team_task"):
         await message.answer(messages.friend_card(reply), reply_markup=friend_keyboard(reply))
+    elif kind == "send_draft":
+        from bot.keyboards import send_draft_keyboard
+        from bot.services.site import app_url
+
+        await message.answer(messages.friend_card(reply), reply_markup=send_draft_keyboard(reply, await app_url()))
     elif kind == "topic":
         await message.answer(messages.topic(reply), reply_markup=topic_keyboard())
     elif kind == "answer":

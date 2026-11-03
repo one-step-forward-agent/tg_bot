@@ -4,7 +4,7 @@ from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, Message
 
-from bot.keyboards import FRIEND_CODES, friend_keyboard
+from bot.keyboards import FRIEND_CODES, friend_keyboard, send_draft_keyboard
 from bot.services.backend import BackendError, backend
 from bot.templates import messages
 
@@ -41,6 +41,38 @@ async def friend_task(callback: CallbackQuery) -> None:
                 pass
         return
     await redraw(callback, card)
+    await callback.answer(messages.short("saved"))
+
+
+@router.callback_query(F.data.startswith("sd:"))
+async def send_draft(callback: CallbackQuery) -> None:
+    """«Отправить» / «Отмена» under a draft: sent, the card becomes the friend's or team's task card."""
+    if not isinstance(callback.message, Message):
+        await callback.answer(messages.outdated(), show_alert=True)
+        return
+    try:
+        _, draft_id, code = callback.data.split(":")
+        card = await backend.send_draft(callback.message.chat.id, int(draft_id), {"s": "send", "c": "cancel"}[code])
+    except (ValueError, KeyError):
+        await callback.answer()
+        return
+    except BackendError as error:
+        await callback.answer(error.detail if error.status in (404, 409) else messages.backend_unavailable(), show_alert=True)
+        if error.status in (404, 409):
+            try:
+                await callback.message.edit_reply_markup(reply_markup=None)
+            except TelegramBadRequest:
+                pass
+        return
+    if card.get("kind") == "answer":
+        # Not sent (the friend paused tasks …): said in words, the draft keeps its buttons
+        await callback.answer(card.get("text") or "", show_alert=True)
+        return
+    keyboard = send_draft_keyboard(card) if card.get("kind") == "send_draft" else friend_keyboard(card)
+    try:
+        await callback.message.edit_text(messages.friend_card(card), reply_markup=keyboard)
+    except TelegramBadRequest:
+        pass
     await callback.answer(messages.short("saved"))
 
 

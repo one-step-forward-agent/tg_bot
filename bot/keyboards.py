@@ -432,7 +432,6 @@ def moved_keyboard(reply: dict) -> InlineKeyboardMarkup:
 FRIEND_ACTIONS = {
     "accept": ("a", ("✅ Принять", "✅ Accept")),
     "reject": ("r", ("✖️ Отклонить", "✖️ Decline")),
-    "block": ("b", ("⛔ Отклонить и не присылать 10 мин", "⛔ Decline, pause for 10 min")),
     "start": ("s", ("▶️ Начал(а)", "▶️ I've started")),
     "cancel": ("c", ("🗑 Отменить задачу", "🗑 Cancel the task")),
     "check_on": ("on", ("👁 Включить контроль", "👁 Turn the check on")),
@@ -440,6 +439,9 @@ FRIEND_ACTIONS = {
     "done": ("d", ("🎉 Выполнено", "🎉 Done")),
 }
 FRIEND_CODES = {code: action for action, (code, _) in FRIEND_ACTIONS.items()}
+# «Не присылать 10 минут» is gone; its button under older messages now only declines (the backend takes "block" so)
+FRIEND_CODES["b"] = "block"
+CANCEL_REMINDER = ("🔕 Отменить напоминание", "🔕 Cancel the reminder")
 
 
 def friend_keyboard(card: dict | None) -> InlineKeyboardMarkup | None:
@@ -450,8 +452,27 @@ def friend_keyboard(card: dict | None) -> InlineKeyboardMarkup | None:
     if card.get("kind") == "friend_invite":
         rows = [[InlineKeyboardButton(text=tr("🤝 Принять", "🤝 Accept"), callback_data=f"fi:{card['friend_id']}:a"), InlineKeyboardButton(text=tr("Отклонить", "Decline"), callback_data=f"fi:{card['friend_id']}:d")]] if "accept_friend" in actions else []
     else:
-        rows = [[InlineKeyboardButton(text=tr(*FRIEND_ACTIONS[action][1]), callback_data=f"{prefix}:{card['task_id']}:{FRIEND_ACTIONS[action][0]}")] for action in actions if action in FRIEND_ACTIONS]
+        def label(action: str) -> str:
+            return tr(*CANCEL_REMINDER) if action == "cancel" and card.get("reminder") else tr(*FRIEND_ACTIONS[action][1])
+
+        rows = [[InlineKeyboardButton(text=label(action), callback_data=f"{prefix}:{card['task_id']}:{FRIEND_ACTIONS[action][0]}")] for action in actions if action in FRIEND_ACTIONS]
         if len(rows) >= 2 and "accept" in actions:
-            # Accept and decline side by side, the pause under them
+            # Accept and decline side by side
             rows = [rows[0] + rows[1], *rows[2:]]
     return InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
+
+
+def send_draft_keyboard(card: dict | None, app_url: str | None = None) -> InlineKeyboardMarkup | None:
+    """A task or reminder for a friend or team member waiting for «Отправить» (backend app.services.send_drafts).
+    It is changed on the site: the chat there has the form."""
+    card = card or {}
+    actions = card.get("actions") or []
+    if not actions:
+        return None
+    rows = [[
+        InlineKeyboardButton(text=tr("📨 Отправить", "📨 Send"), callback_data=f"sd:{card['draft_id']}:s"),
+        InlineKeyboardButton(text=tr("✖️ Отмена", "✖️ Cancel"), callback_data=f"sd:{card['draft_id']}:c"),
+    ]]
+    if "edit" in actions and app_url:
+        rows.append([InlineKeyboardButton(text=tr("✏️ Изменить на сайте", "✏️ Change on the site"), url=f"{app_url.rstrip('/')}/assistant")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
