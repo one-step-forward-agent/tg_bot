@@ -99,7 +99,7 @@ def created_keyboard(event_ids: list[int], events: list[dict], app_url: str | No
     return InlineKeyboardMarkup(inline_keyboard=[row]) if row else None
 
 
-def agenda_keyboard(current: str | None, app_url: str | None) -> InlineKeyboardMarkup:
+def agenda_keyboard(current: str | None, app_url: str | None, reply: dict | None = None) -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton(text=f"• {tr(*label)} •" if scope == current else tr(*label), callback_data=f"ag:{scope}") for scope, label in SCOPES.items()]]
     if current in SCOPES:
         rows.append([
@@ -108,8 +108,19 @@ def agenda_keyboard(current: str | None, app_url: str | None) -> InlineKeyboardM
         ])
     url = public_url(app_url)
     if url:
-        rows.append([InlineKeyboardButton(text=tr("↗️ Календарь в Deyla", "↗️ Calendar in Deyla"), url=f"{url}/app/calendar")])
+        rows.append([agenda_link(url, reply or {})])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def agenda_link(url: str, reply: dict) -> InlineKeyboardButton:
+    """Straight to what was asked about: the one event found, the day shown, or else the calendar."""
+    events = [event for day in reply.get("days") or [] for event in day.get("events") or []]
+    event_url = public_url(events[0].get("url")) if len(events) == 1 else None
+    if event_url:
+        return InlineKeyboardButton(text=tr("↗️ Открыть событие", "↗️ Open the event"), url=event_url)
+    if reply.get("date") and reply.get("scope") != "week":
+        return InlineKeyboardButton(text=tr("↗️ Этот день в Deyla", "↗️ This day in Deyla"), url=f"{url}/app/calendar?day={reply['date'][:10]}")
+    return InlineKeyboardButton(text=tr("↗️ Календарь в Deyla", "↗️ Calendar in Deyla"), url=f"{url}/app/calendar")
 
 
 def reminder_keyboard(notification_id: int, url: str | None, event_id: int | None = None) -> InlineKeyboardMarkup:

@@ -35,7 +35,7 @@ NOTIFICATION_PREFIXES = ("☀️", "🕐", "🔔", "🌙", "⏳", "💡")
 
 async def render(chat_id: int, scope: str) -> tuple[str, object]:
     reply = await backend.agenda(chat_id, scope)
-    return messages.agenda(reply), agenda_keyboard(scope, await site.app_url())
+    return messages.agenda(reply), agenda_keyboard(scope, await site.app_url(), reply)
 
 
 async def show(message: Message, scope: str) -> None:
