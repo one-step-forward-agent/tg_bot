@@ -474,5 +474,5 @@ def send_draft_keyboard(card: dict | None, app_url: str | None = None) -> Inline
         InlineKeyboardButton(text=tr("✖️ Отмена", "✖️ Cancel"), callback_data=f"sd:{card['draft_id']}:c"),
     ]]
     if "edit" in actions and app_url:
-        rows.append([InlineKeyboardButton(text=tr("✏️ Изменить на сайте", "✏️ Change on the site"), url=f"{app_url.rstrip('/')}/assistant")])
+        rows.append([InlineKeyboardButton(text=tr("✏️ Изменить на сайте", "✏️ Change on the site"), url=f"{app_url.rstrip('/')}/app/assistant")])
     return InlineKeyboardMarkup(inline_keyboard=rows)

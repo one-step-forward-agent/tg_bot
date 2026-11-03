@@ -91,7 +91,7 @@ DRAFT = {
 def test_a_draft_has_send_cancel_and_a_link_to_change_it():
     markup = keyboards.send_draft_keyboard(DRAFT, "https://deyla.tech")
     assert buttons(markup) == ["sd:12:s", "sd:12:c", None]
-    assert markup.inline_keyboard[1][0].url == "https://deyla.tech/assistant"
+    assert markup.inline_keyboard[1][0].url == "https://deyla.tech/app/assistant"
     assert buttons(keyboards.send_draft_keyboard(DRAFT)) == ["sd:12:s", "sd:12:c"]
     assert keyboards.send_draft_keyboard({**DRAFT, "actions": []}) is None
     assert_telegram_html(messages.friend_card(DRAFT))
