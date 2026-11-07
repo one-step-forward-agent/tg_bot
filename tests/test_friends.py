@@ -163,6 +163,13 @@ def test_friend_change_drafts_name_the_confirmed_operation():
         assert "Подтвердить" in markup.inline_keyboard[0][0].text
 
 
+def test_schedule_sharing_draft_has_explicit_confirmation_and_no_edit():
+    card = {**DRAFT, "type": "schedule_share", "operation": "share", "actions": ["send", "cancel"]}
+    markup = keyboards.send_draft_keyboard(card, "https://deyla.tech")
+    assert buttons(markup) == ["sd:12:s", "sd:12:c"]
+    assert "Открыть доступ" in markup.inline_keyboard[0][0].text
+
+
 async def test_sending_a_draft_turns_it_into_the_friends_card(monkeypatch):
     sent = {**REQUEST, "actions": ["cancel"], "reminder": True, "text": "🔔 Поставила напоминание. Получатель: **Олег**"}
     call = AsyncMock(return_value=sent)

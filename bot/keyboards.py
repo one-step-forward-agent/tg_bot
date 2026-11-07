@@ -512,7 +512,7 @@ def send_draft_keyboard(card: dict | None, app_url: str | None = None) -> Inline
     if not actions:
         return None
     rows = [[
-        InlineKeyboardButton(text=tr("✅ Подтвердить отмену", "✅ Confirm cancellation") if card.get("operation") == "cancel" else tr("✅ Подтвердить изменение", "✅ Confirm change") if card.get("operation") == "edit" else tr("📨 Отправить", "📨 Send"), callback_data=f"sd:{card['draft_id']}:s"),
+        InlineKeyboardButton(text=tr("👁 Открыть доступ", "👁 Share") if card.get("operation") == "share" else tr("✅ Подтвердить отмену", "✅ Confirm cancellation") if card.get("operation") == "cancel" else tr("✅ Подтвердить изменение", "✅ Confirm change") if card.get("operation") == "edit" else tr("📨 Отправить", "📨 Send"), callback_data=f"sd:{card['draft_id']}:s"),
         InlineKeyboardButton(text=tr("✖️ Отмена", "✖️ Cancel"), callback_data=f"sd:{card['draft_id']}:c"),
     ]]
     if "edit" in actions and app_url:
