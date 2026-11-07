@@ -1,10 +1,12 @@
 """Buttons under a friend's task or invitation (backend app.services.friends): the card is redrawn as it is now."""
 
+from datetime import date, datetime
+
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, Message
 
-from bot.keyboards import FRIEND_CODES, friend_keyboard, send_draft_keyboard, team_schedule_keyboard
+from bot.keyboards import FRIEND_CODES, friend_keyboard, send_draft_keyboard, team_calendar_keyboard, team_schedule_keyboard
 from bot.i18n import tr
 from bot.services import site
 from bot.services.backend import BackendError, backend
@@ -28,16 +30,31 @@ async def friend_task(callback: CallbackQuery) -> None:
         return
     try:
         kind, task_id, code = callback.data.split(":")
+        if kind == "tt" and code == "noop":
+            await callback.answer()
+            return
         if kind == "tt" and code == "a":
             await callback.message.edit_reply_markup(reply_markup=team_schedule_keyboard(int(task_id), await site.app_url()))
             await callback.answer(tr("Выберите день выполнения", "Choose a work day"))
             return
+        if kind == "tt" and code.startswith("cal"):
+            profile = await backend.profile(callback.message.chat.id)
+            today = date.fromisoformat(profile["today"])
+            month = datetime.strptime(code[3:], "%Y%m").date() if code[3:] else today
+            if month.replace(day=1) < today.replace(day=1):
+                month = today
+            await callback.message.edit_reply_markup(reply_markup=team_calendar_keyboard(int(task_id), month, today))
+            await callback.answer(tr("Выберите день выполнения", "Choose a work day"))
+            return
         if kind == "tt" and code in ("a0", "a1", "a2"):
             card = await backend.team_task(callback.message.chat.id, int(task_id), "accept", {"day_offset": int(code[1]), "start_time": None})
+        elif kind == "tt" and code.startswith("d") and code != "d":
+            day = datetime.strptime(code[1:], "%Y%m%d").date()
+            card = await backend.team_task(callback.message.chat.id, int(task_id), "accept", {"day": day.isoformat(), "start_time": None})
         else:
             call = backend.team_task if kind == "tt" else backend.friend_task
             card = await call(callback.message.chat.id, int(task_id), FRIEND_CODES[code])
-    except (ValueError, KeyError):
+    except (ValueError, KeyError, OverflowError):
         await callback.answer()
         return
     except BackendError as error:

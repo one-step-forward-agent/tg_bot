@@ -1,3 +1,4 @@
+import calendar
 from datetime import date, datetime, timedelta
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
@@ -468,9 +469,36 @@ def team_schedule_keyboard(task_id: int, app_url: str | None = None) -> InlineKe
     rows = [[InlineKeyboardButton(text=tr("Сегодня", "Today"), callback_data=f"tt:{task_id}:a0"),
              InlineKeyboardButton(text=tr("Завтра", "Tomorrow"), callback_data=f"tt:{task_id}:a1"),
              InlineKeyboardButton(text=tr("Послезавтра", "Day after tomorrow"), callback_data=f"tt:{task_id}:a2")]]
+    rows.append([InlineKeyboardButton(text=tr("📅 Выбрать дату", "📅 Choose a date"), callback_data=f"tt:{task_id}:cal")])
     if app_url:
         rows.append([InlineKeyboardButton(text=tr("Другая дата или время на сайте", "Another date or time on the site"), url=f"{app_url.rstrip('/')}/app/assistant")])
     rows.append([InlineKeyboardButton(text=tr("Отклонить", "Decline"), callback_data=f"tt:{task_id}:r")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def team_calendar_keyboard(task_id: int, month: date, today: date) -> InlineKeyboardMarkup:
+    """A concrete work day, in the recipient's timezone; past dates are inert."""
+    month = month.replace(day=1)
+    noop = f"tt:{task_id}:noop"
+    names = ("Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь")
+    heading = f"{calendar.month_name[month.month] if is_en() else names[month.month - 1]} {month.year}"
+    previous = month - timedelta(days=1)
+    next_month = (month + timedelta(days=32)).replace(day=1)
+    rows = [[
+        InlineKeyboardButton(text="←", callback_data=f"tt:{task_id}:cal{previous:%Y%m}" if previous >= today.replace(day=1) else noop),
+        InlineKeyboardButton(text=heading, callback_data=noop),
+        InlineKeyboardButton(text="→", callback_data=f"tt:{task_id}:cal{next_month:%Y%m}"),
+    ]]
+    weekdays = ("Mo", "Tu", "We", "Th", "Fr", "Sa", "Su") if is_en() else ("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
+    rows.append([InlineKeyboardButton(text=day, callback_data=noop) for day in weekdays])
+    for week in calendar.monthcalendar(month.year, month.month):
+        row = []
+        for number in week:
+            day = date(month.year, month.month, number) if number else None
+            enabled = day is not None and day >= today
+            row.append(InlineKeyboardButton(text=str(number) if enabled else "·", callback_data=f"tt:{task_id}:d{day:%Y%m%d}" if enabled else noop))
+        rows.append(row)
+    rows.append([InlineKeyboardButton(text=tr("Назад", "Back"), callback_data=f"tt:{task_id}:a")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
