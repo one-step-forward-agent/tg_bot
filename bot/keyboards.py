@@ -456,6 +456,8 @@ def friend_keyboard(card: dict | None) -> InlineKeyboardMarkup | None:
         def label(action: str) -> str:
             if prefix == "tt" and action == "accept":
                 return tr("📅 Принять и выбрать день", "📅 Accept and choose a day")
+            if prefix == "tt" and action == "start":
+                return tr("▶️ Начал выполнение", "▶️ Started execution")
             return tr(*CANCEL_REMINDER) if action == "cancel" and card.get("reminder") else tr(*FRIEND_ACTIONS[action][1])
 
         rows = [[InlineKeyboardButton(text=label(action), callback_data=f"{prefix}:{card['task_id']}:{FRIEND_ACTIONS[action][0]}")] for action in actions if action in FRIEND_ACTIONS]

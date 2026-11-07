@@ -76,6 +76,9 @@ async def test_team_task_buttons_go_to_the_team(monkeypatch):
     card = {"kind": "team_task", "task_id": 5, "actions": ["accept", "reject"], "text": "**Отчёт**"}
     assert buttons(keyboards.friend_keyboard(card)) == ["tt:5:a", "tt:5:r"]
     assert buttons(keyboards.friend_keyboard({**card, "actions": ["done"]})) == ["tt:5:d"]
+    start_markup = keyboards.friend_keyboard({**card, "actions": ["start"]})
+    assert buttons(start_markup) == ["tt:5:s"]
+    assert "Начал выполнение" in start_markup.inline_keyboard[0][0].text
     call = AsyncMock(return_value={**card, "actions": ["done"]})
     monkeypatch.setattr(friends.backend, "team_task", call)
     monkeypatch.setattr(friends.site, "app_url", AsyncMock(return_value="https://deyla.tech"))
@@ -118,7 +121,7 @@ async def test_opening_and_navigating_calendar_does_not_accept_task(monkeypatch)
 
 
 async def test_selected_calendar_date_accepts_untimed_without_changing_deadline(monkeypatch):
-    call = AsyncMock(return_value={"kind": "team_task", "task_id": 5, "actions": ["done"], "text": "Accepted"})
+    call = AsyncMock(return_value={"kind": "team_task", "task_id": 5, "actions": ["start"], "text": "Accepted"})
     monkeypatch.setattr(friends.backend, "team_task", call)
     query = callback("tt:5:d20301217")
     await friends.friend_task(query)
