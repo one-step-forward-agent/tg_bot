@@ -75,8 +75,15 @@ async def test_team_task_buttons_go_to_the_team(monkeypatch):
     assert buttons(keyboards.friend_keyboard({**card, "actions": ["done"]})) == ["tt:5:d"]
     call = AsyncMock(return_value={**card, "actions": ["done"]})
     monkeypatch.setattr(friends.backend, "team_task", call)
-    await friends.friend_task(callback("tt:5:a"))
-    call.assert_awaited_once_with(42, 5, "accept")
+    monkeypatch.setattr(friends.site, "app_url", AsyncMock(return_value="https://deyla.tech"))
+    query = callback("tt:5:a")
+    await friends.friend_task(query)
+    call.assert_not_awaited()
+    markup = query.message.edit_reply_markup.await_args.kwargs["reply_markup"]
+    assert buttons(markup) == ["tt:5:a0", "tt:5:a1", "tt:5:a2", None, "tt:5:r"]
+    await friends.friend_task(callback("tt:5:a1"))
+    assert call.await_args.args[:3] == (42, 5, "accept")
+    assert call.await_args.args[3] == {"day_offset": 1, "start_time": None}
 
 
 DRAFT = {
@@ -95,6 +102,13 @@ def test_a_draft_has_send_cancel_and_a_link_to_change_it():
     assert buttons(keyboards.send_draft_keyboard(DRAFT)) == ["sd:12:s", "sd:12:c"]
     assert keyboards.send_draft_keyboard({**DRAFT, "actions": []}) is None
     assert_telegram_html(messages.friend_card(DRAFT))
+
+
+def test_friend_change_drafts_name_the_confirmed_operation():
+    for operation in ("edit", "cancel"):
+        markup = keyboards.send_draft_keyboard({**DRAFT, "operation": operation, "actions": ["send", "cancel"]})
+        assert buttons(markup) == ["sd:12:s", "sd:12:c"]
+        assert "Подтвердить" in markup.inline_keyboard[0][0].text
 
 
 async def test_sending_a_draft_turns_it_into_the_friends_card(monkeypatch):

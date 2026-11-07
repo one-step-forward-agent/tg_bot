@@ -161,8 +161,10 @@ class DaylaBackend:
         """A button under a friend's task: accept, reject, start, cancel, check_on, check_off ("block" of older messages declines)."""
         return await self._request("POST", f"/internal/bot/chat/{chat_id}/friend-tasks/{task_id}/{action}")
 
-    async def team_task(self, chat_id: int, task_id: int, action: str) -> dict:
+    async def team_task(self, chat_id: int, task_id: int, action: str, schedule: dict | None = None) -> dict:
         """A button under a team's task: accept, reject, start, done, check_on, check_off."""
+        if schedule is not None:
+            return await self._request("POST", f"/internal/bot/chat/{chat_id}/team-tasks/{task_id}/{action}", json=schedule)
         return await self._request("POST", f"/internal/bot/chat/{chat_id}/team-tasks/{task_id}/{action}")
 
     async def send_draft(self, chat_id: int, draft_id: int, action: str) -> dict:

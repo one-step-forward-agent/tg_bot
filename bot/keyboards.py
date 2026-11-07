@@ -453,6 +453,8 @@ def friend_keyboard(card: dict | None) -> InlineKeyboardMarkup | None:
         rows = [[InlineKeyboardButton(text=tr("🤝 Принять", "🤝 Accept"), callback_data=f"fi:{card['friend_id']}:a"), InlineKeyboardButton(text=tr("Отклонить", "Decline"), callback_data=f"fi:{card['friend_id']}:d")]] if "accept_friend" in actions else []
     else:
         def label(action: str) -> str:
+            if prefix == "tt" and action == "accept":
+                return tr("📅 Принять и выбрать день", "📅 Accept and choose a day")
             return tr(*CANCEL_REMINDER) if action == "cancel" and card.get("reminder") else tr(*FRIEND_ACTIONS[action][1])
 
         rows = [[InlineKeyboardButton(text=label(action), callback_data=f"{prefix}:{card['task_id']}:{FRIEND_ACTIONS[action][0]}")] for action in actions if action in FRIEND_ACTIONS]
@@ -460,6 +462,16 @@ def friend_keyboard(card: dict | None) -> InlineKeyboardMarkup | None:
             # Accept and decline side by side
             rows = [rows[0] + rows[1], *rows[2:]]
     return InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
+
+
+def team_schedule_keyboard(task_id: int, app_url: str | None = None) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=tr("Сегодня", "Today"), callback_data=f"tt:{task_id}:a0"),
+             InlineKeyboardButton(text=tr("Завтра", "Tomorrow"), callback_data=f"tt:{task_id}:a1"),
+             InlineKeyboardButton(text=tr("Послезавтра", "Day after tomorrow"), callback_data=f"tt:{task_id}:a2")]]
+    if app_url:
+        rows.append([InlineKeyboardButton(text=tr("Другая дата или время на сайте", "Another date or time on the site"), url=f"{app_url.rstrip('/')}/app/assistant")])
+    rows.append([InlineKeyboardButton(text=tr("Отклонить", "Decline"), callback_data=f"tt:{task_id}:r")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def send_draft_keyboard(card: dict | None, app_url: str | None = None) -> InlineKeyboardMarkup | None:
@@ -470,7 +482,7 @@ def send_draft_keyboard(card: dict | None, app_url: str | None = None) -> Inline
     if not actions:
         return None
     rows = [[
-        InlineKeyboardButton(text=tr("📨 Отправить", "📨 Send"), callback_data=f"sd:{card['draft_id']}:s"),
+        InlineKeyboardButton(text=tr("✅ Подтвердить отмену", "✅ Confirm cancellation") if card.get("operation") == "cancel" else tr("✅ Подтвердить изменение", "✅ Confirm change") if card.get("operation") == "edit" else tr("📨 Отправить", "📨 Send"), callback_data=f"sd:{card['draft_id']}:s"),
         InlineKeyboardButton(text=tr("✖️ Отмена", "✖️ Cancel"), callback_data=f"sd:{card['draft_id']}:c"),
     ]]
     if "edit" in actions and app_url:

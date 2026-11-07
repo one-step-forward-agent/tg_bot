@@ -4,7 +4,9 @@ from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, Message
 
-from bot.keyboards import FRIEND_CODES, friend_keyboard, send_draft_keyboard
+from bot.keyboards import FRIEND_CODES, friend_keyboard, send_draft_keyboard, team_schedule_keyboard
+from bot.i18n import tr
+from bot.services import site
 from bot.services.backend import BackendError, backend
 from bot.templates import messages
 
@@ -26,8 +28,15 @@ async def friend_task(callback: CallbackQuery) -> None:
         return
     try:
         kind, task_id, code = callback.data.split(":")
-        call = backend.team_task if kind == "tt" else backend.friend_task
-        card = await call(callback.message.chat.id, int(task_id), FRIEND_CODES[code])
+        if kind == "tt" and code == "a":
+            await callback.message.edit_reply_markup(reply_markup=team_schedule_keyboard(int(task_id), await site.app_url()))
+            await callback.answer(tr("Выберите день выполнения", "Choose a work day"))
+            return
+        if kind == "tt" and code in ("a0", "a1", "a2"):
+            card = await backend.team_task(callback.message.chat.id, int(task_id), "accept", {"day_offset": int(code[1]), "start_time": None})
+        else:
+            call = backend.team_task if kind == "tt" else backend.friend_task
+            card = await call(callback.message.chat.id, int(task_id), FRIEND_CODES[code])
     except (ValueError, KeyError):
         await callback.answer()
         return
