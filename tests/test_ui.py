@@ -70,6 +70,21 @@ def test_agenda_marks_completed_and_untimed():
     assert_telegram_html(messages.done_list(reply))
 
 
+@pytest.mark.parametrize("scope", ["today", "week"])
+def test_agenda_displays_the_start_date_of_an_overnight_event(scope):
+    reply = {
+        "scope": scope, "date": "2026-11-11", "title": "Сегодня" if scope == "today" else "Ближайшие 7 дней",
+        "days": [{"date": "2026-11-11", "label": "Сегодня, среда, 11 ноября", "events": [
+            {"start": "2026-11-10T23:00:00+03:00", "title": "Ночной созвон", "completed": True},
+            {"start": "2026-11-11T09:30:00+03:00", "title": "Курсовая"},
+        ]}],
+    }
+    text = messages.agenda(reply)
+    assert_telegram_html(text)
+    assert "<code>с 10 ноября, 23:00</code>  ✅ <s>Ночной созвон</s>" in text
+    assert "<code>09:30</code>  Курсовая" in text
+
+
 def test_stats_text():
     days = [{"date": (NOW.date() - timedelta(days=6 - offset)).isoformat(), "total": offset, "done": offset // 2, "percent": 50 if offset else 0} for offset in range(7)]
     text = messages.stats({"today": days[-1], "days": days, "total": 21, "done": 9, "percent": 43, "streak": 3})

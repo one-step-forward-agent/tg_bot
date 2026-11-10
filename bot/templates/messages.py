@@ -365,9 +365,14 @@ def created(reply: dict) -> str:
     return "\n\n".join(parts)
 
 
-def agenda_line(event: dict) -> str:
+def agenda_line(event: dict, day: str | None = None) -> str:
     start = datetime.fromisoformat(event["start"])
     time_text = no_time() if event.get("all_day") else f"{start:%H:%M}"
+    if day and start.date().isoformat() < day:
+        start_text = day_month(start.date())
+        if not event.get("all_day"):
+            start_text += f", {time_text}"
+        time_text = tr(f"с {start_text}", f"from {start_text}")
     title = f"✅ <s>{esc(event['title'])}</s>" if event.get("completed") else esc(event["title"])
     line = f"<code>{time_text}</code>  {priority_mark(event)}{title}"
     if event.get("location"):
@@ -393,7 +398,8 @@ def agenda_body(reply: dict) -> str:
             header = f"📅 <b>{esc(day_text(first, first - timedelta(days=7)))}</b>"
         if not count:
             return f"{header}\n\n{tr('Свободный день — ничего не запланировано', 'A free day — nothing planned')} 🌿"
-        body = "\n".join(agenda_line(event) for event in days[0]["events"])
+        display_date = reply["date"] if reply.get("scope") else None
+        body = "\n".join(agenda_line(event, display_date) for event in days[0]["events"])
         return f"{header}\n\n{body}"
     icon = "🔎" if title in FOUND_TITLES else "📆" if reply.get("scope") == "week" else "📅"
     if not count:
@@ -401,7 +407,8 @@ def agenda_body(reply: dict) -> str:
     lines = [f"{icon} <b>{esc(title)}</b> · {counted(count, 'событие', 'события', 'событий', 'event', 'events')}"]
     shown = 0
     for day in days:
-        block = [f"\n<b>{esc(day['label'])}</b>", *[agenda_line(event) for event in day["events"]]]
+        display_date = day.get("date") if reply.get("scope") == "week" else None
+        block = [f"\n<b>{esc(day['label'])}</b>", *[agenda_line(event, display_date) for event in day["events"]]]
         if len("\n".join(lines + block)) > MESSAGE_LIMIT:
             rest = count - shown
             lines.append(tr(
