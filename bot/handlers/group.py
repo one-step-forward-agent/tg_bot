@@ -1,10 +1,4 @@
-"""Deyla in a group chat (a work chat, a family chat).
-
-Telegram gives a bot in a group only the messages that mention it or answer it, so nothing else is read. Mentioned
-— «@dayla_bot запиши: отчёт к пятнице», or as an answer to a colleague's message with the request — Deyla plans it
-for the person who asked, in their own calendar. The draft and its buttons go to that person's private chat, and
-the group gets one short line: the plan of one member is not shown to everyone.
-"""
+"""Group mentions use recent received text; answers and confirmations stay private."""
 
 import logging
 import re
@@ -12,10 +6,12 @@ import re
 from aiogram import Bot, F, Router
 from aiogram.enums import ChatType
 from aiogram.exceptions import TelegramForbiddenError
-from aiogram.types import Message
+from aiogram.types import ChatMemberUpdated, Message
 
 from bot.handlers.chat import deliver
 from bot.services.backend import BackendError, backend
+from bot.services.group_context import recent
+from bot.i18n import using
 from bot.templates import messages
 
 logger = logging.getLogger(__name__)
@@ -48,21 +44,29 @@ def request_text(message: Message, username: str, replied_to_bot: bool) -> str:
 
 @router.message(F.text | F.caption)
 async def group_message(message: Message, bot: Bot) -> None:
-    if not message.from_user or message.from_user.is_bot:
+    if not message.from_user or message.from_user.is_bot or message.sender_chat:
         return
     me = await bot.me()
     text = message.text or message.caption or ""
     replied_to_bot = bool(message.reply_to_message and message.reply_to_message.from_user and message.reply_to_message.from_user.id == me.id)
-    if not replied_to_bot and f"@{me.username}".lower() not in text.lower():
+    mention = re.compile(rf"(?<![\w@])@{re.escape(me.username)}\b", re.I)
+    command = re.match(rf"^/(?:dayla|scan)@{re.escape(me.username)}\b", text, re.I)
+    if not replied_to_bot and not mention.search(text) and not command:
+        recent.remember(message)
         return
-    request = request_text(message, me.username, replied_to_bot)
+    request = mention.sub(" ", text[command.end():] if command else text)
+    request = request.strip(" ,:—-\n")
+    if not request and message.reply_to_message and not replied_to_bot:
+        request = messages.short("plan_this")
+    if not request and command and text.lower().startswith("/scan"):
+        request = "Scan the recent chat for agreed appointments and prepare calendar drafts."
     if not request:
         await message.reply(messages.group_help(me.username))
         return
     # In Telegram a person's private chat with the bot has the person's id: that is the linked Deyla account
     person = message.from_user.id
     try:
-        reply = await backend.chat(person, request)
+        profile = await backend.profile(person)
     except BackendError as error:
         if error.status == 404:
             await message.reply(messages.group_not_linked(me.username))
@@ -72,10 +76,31 @@ async def group_message(message: Message, bot: Bot) -> None:
             logger.warning("Group request of %s failed: %s", person, error.status)
             await message.reply(messages.processing_error())
         return
-    try:
-        await deliver(PrivateChat(bot, person), reply)
-    except TelegramForbiddenError:
-        # The person has not started the bot in private, or blocked it
-        await message.reply(messages.group_not_linked(me.username))
-        return
-    await message.reply(messages.group_sent())
+    with using(profile.get("language")):
+        try:
+            # Check private delivery before the assistant can perform any requested action.
+            await bot.send_message(person, messages.group_processing())
+        except TelegramForbiddenError:
+            await message.reply(messages.group_not_linked(me.username))
+            return
+        try:
+            reply = await backend.group_chat(person, request, recent.context(message))
+            await deliver(PrivateChat(bot, person), reply)
+        except BackendError as error:
+            await message.reply(messages.group_not_linked(me.username) if error.status == 404 else messages.processing_error())
+            return
+        except TelegramForbiddenError:
+            await message.reply(messages.group_not_linked(me.username))
+            return
+        await message.reply(messages.group_sent())
+
+
+@router.edited_message(F.chat.type.in_({ChatType.GROUP, ChatType.SUPERGROUP}))
+async def group_edit(message: Message) -> None:
+    recent.remember(message)
+
+
+@router.my_chat_member()
+async def membership_changed(event: ChatMemberUpdated) -> None:
+    if event.new_chat_member.status in {"left", "kicked"}:
+        recent.forget(event.chat.id)

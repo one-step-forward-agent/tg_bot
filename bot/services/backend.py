@@ -75,6 +75,10 @@ class DaylaBackend:
         form.add_field("text", text[:50000])
         return await self._request("POST", f"/internal/bot/chat/{chat_id}/file", data=form, timeout=ASSISTANT_TIMEOUT)
 
+    async def group_chat(self, user_id: int, text: str, context: str) -> dict:
+        return await self._request("POST", f"/internal/bot/group-chat/{user_id}",
+                                   {"text": text[:10000], "context": context}, timeout=ASSISTANT_TIMEOUT)
+
     async def topic(self, chat_id: int, index: int) -> dict:
         return await self._request("POST", f"/internal/bot/chat/{chat_id}/topic", {"index": index})
 

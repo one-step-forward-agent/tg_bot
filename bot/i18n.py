@@ -70,5 +70,10 @@ async def language_of(user: User | None) -> str:
 
 class LanguageMiddleware(BaseMiddleware):
     async def __call__(self, handler, event: TelegramObject, data: dict):
+        if getattr(getattr(event, "chat", None), "type", None) in {"group", "supergroup"}:
+            # Passive group messages must not trigger profile lookups. The group handler resolves
+            # the requesting member and sets their site language after a mention.
+            with using(telegram_language(data.get("event_from_user"))):
+                return await handler(event, data)
         with using(await language_of(data.get("event_from_user"))):
             return await handler(event, data)

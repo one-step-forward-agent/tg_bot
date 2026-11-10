@@ -673,9 +673,13 @@ def account_unlinked() -> str:
 def group_help(username: str) -> str:
     return tr(
         f"Я Deyla. Напишите <b>@{esc(username)}</b> и что запланировать — «@{esc(username)} отчёт к пятнице», "
-        "или ответьте так на сообщение коллеги: задача попадёт в ваш календарь, черновик пришлю в личку.",
+        "или «просканируй чат и найди встречу». Можно ответить на сообщение коллеги. "
+        "Использую до 50 полученных сообщений за последний час в этой теме. Ответ и черновик пришлю в личку; "
+        "для чтения обычных сообщений нужны права администратора бота или отключённый privacy mode.",
         f"I'm Deyla. Write <b>@{esc(username)}</b> and what to plan — “@{esc(username)} report by Friday”, "
-        "or reply like that to a colleague's message: the task goes to your calendar, and I'll send the draft in a private chat.",
+        "or “scan the chat and find the appointment”. You can also reply to a colleague's message. "
+        "I use up to 50 received messages from the last hour in this topic. Answers and drafts go privately; "
+        "reading ordinary messages requires bot admin rights or disabled privacy mode.",
     )
 
 
@@ -689,7 +693,11 @@ def group_not_linked(username: str) -> str:
 
 
 def group_sent() -> str:
-    return tr("✓ Записала в ваш план — подтвердите в личных сообщениях", "✓ Added to your plan — confirm it in our private chat")
+    return tr("✓ Ответ отправила в личные сообщения. Черновики нужно подтвердить там.", "✓ Sent the answer privately. Confirm any drafts there.")
+
+
+def group_processing() -> str:
+    return tr("Читаю доступный контекст группы и ваш запрос…", "Reading the available group context and your request…")
 
 
 def file_too_big() -> str:
