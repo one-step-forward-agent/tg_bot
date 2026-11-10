@@ -79,6 +79,15 @@ class DaylaBackend:
         return await self._request("POST", f"/internal/bot/group-chat/{user_id}",
                                    {"text": text[:10000], "context": context}, timeout=ASSISTANT_TIMEOUT)
 
+    async def group_chat_photos(self, user_id: int, text: str, context: str, files: list[tuple[str, bytes]]) -> dict:
+        form = aiohttp.FormData()
+        form.add_field("text", text[:10000])
+        form.add_field("context", context)
+        for name, data in files:
+            form.add_field("files", data, filename=name, content_type="image/jpeg")
+        return await self._request("POST", f"/internal/bot/group-chat/{user_id}/photos",
+                                   data=form, timeout=aiohttp.ClientTimeout(total=720))
+
     async def topic(self, chat_id: int, index: int) -> dict:
         return await self._request("POST", f"/internal/bot/chat/{chat_id}/topic", {"index": index})
 

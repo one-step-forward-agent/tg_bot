@@ -42,6 +42,14 @@ def received(text="Tomorrow at 15:00", *, chat=-10, topic=None, mid=1, uid=42):
     )
 
 
+def photo_message(mid=1, caption=None, album=None):
+    msg = received(None, mid=mid)
+    msg.caption = caption
+    msg.photo = [SimpleNamespace(file_id=f"synthetic-file-{mid}", file_size=100)]
+    msg.media_group_id = album
+    return msg
+
+
 def test_context_is_bounded_and_topics_are_isolated(monkeypatch):
     cache = RecentMessages()
     for mid in range(1, 80):
@@ -172,3 +180,122 @@ async def test_private_delivery_failure_prevents_actions(group_setup):
     bot.send_message.side_effect = TelegramForbiddenError(method=SendMessage(chat_id=42, text="x"), message="blocked")
     await group.group_message(received("@dayla_bot scan"), bot)
     ask.assert_not_awaited()
+
+
+@pytest.mark.parametrize("text", ["/scan@dayla_bot", "@dayla_bot просканируй чат", "@dayla_bot scan the chat"])
+async def test_scan_without_received_messages_explains_missing_context(group_setup, text):
+    _, profile, ask, delivery, bot = group_setup
+    msg = received(text)
+    await group.group_message(msg, bot)
+    profile.assert_awaited_once_with(42)
+    ask.assert_not_awaited()
+    delivery.assert_not_awaited()
+    answer = bot.send_message.call_args.args[1]
+    assert "no available messages" in answer and "/setprivacy" in answer
+    assert "/scan@dayla_bot" in answer and "reply directly" in answer
+    msg.reply.assert_awaited_once()
+
+
+async def test_scan_with_explicit_reply_works_without_passive_messages(group_setup):
+    _, _, ask, delivery, bot = group_setup
+    msg = received("/scan@dayla_bot", mid=10)
+    msg.reply_to_message = received("в 8 утра встреча завтра")
+    await group.group_message(msg, bot)
+    assert "в 8 утра встреча завтра" in ask.call_args.args[2]
+    delivery.assert_awaited_once()
+
+
+async def test_scan_includes_new_ordinary_messages(group_setup):
+    _, _, ask, _, bot = group_setup
+    await group.group_message(received("в 8 утра встреча завтра"), bot)
+    await group.group_message(received("/scan@dayla_bot", mid=2), bot)
+    assert "в 8 утра встреча завтра" in ask.call_args.args[2]
+
+
+async def test_scan_combines_fragments_with_uncaptioned_photo(group_setup, monkeypatch):
+    _, _, ask, _, bot = group_setup
+    photo_ask = AsyncMock(return_value={"kind": "proposal"})
+    monkeypatch.setattr(group.backend, "group_chat_photos", photo_ask)
+
+    async def download(file_id, destination):
+        destination.write(b"\xff\xd8\xffsynthetic-jpeg")
+
+    bot.download = AsyncMock(side_effect=download)
+    for mid, text in enumerate(["встреча", "завтра", "в 8 утра"], 1):
+        await group.group_message(received(text, mid=mid), bot)
+    await group.group_message(photo_message(4, album="album-1"), bot)
+    bot.download.assert_not_awaited()
+    await group.group_message(received("/scan@dayla_bot", mid=5), bot)
+    args = photo_ask.call_args.args
+    rows = json.loads(args[2])
+    assert [row["text"] for row in rows] == ["встреча", "завтра", "в 8 утра", ""]
+    assert rows[-1]["album_id"] == "album-1" and rows[-1]["photo"]["filename"] == "message-4.jpg"
+    assert "synthetic-file" not in args[2]
+    assert args[3] == [("message-4.jpg", b"\xff\xd8\xffsynthetic-jpeg")]
+    ask.assert_not_awaited()
+
+
+async def test_scan_replied_photo_not_in_buffer_is_read(group_setup, monkeypatch):
+    _, _, _, _, bot = group_setup
+    photo_ask = AsyncMock(return_value={"kind": "proposal"})
+    monkeypatch.setattr(group.backend, "group_chat_photos", photo_ask)
+
+    async def download(file_id, destination):
+        destination.write(b"\xff\xd8\xffsynthetic-jpeg")
+
+    bot.download = AsyncMock(side_effect=download)
+    msg = received("/scan@dayla_bot", mid=10)
+    msg.reply_to_message = photo_message(1, "Meeting invitation")
+    await group.group_message(msg, bot)
+    assert json.loads(photo_ask.call_args.args[2])[0]["replied_to"] is True
+
+
+async def test_unlinked_request_never_downloads_photos(group_setup):
+    cache, profile, _, _, bot = group_setup
+    cache.remember(photo_message())
+    profile.side_effect = BackendError(404, "not linked")
+    bot.download = AsyncMock()
+    await group.group_message(received("/scan@dayla_bot", mid=2), bot)
+    bot.download.assert_not_awaited()
+
+
+async def test_dotted_scan_is_normalized_if_delivered(group_setup):
+    cache, _, ask, _, bot = group_setup
+    cache.remember(received("встреча завтра в 8"))
+    await group.group_message(received("./scan@dayla_bot", mid=2), bot)
+    assert ask.call_args.args[1].startswith("Scan the recent chat")
+
+
+async def test_oversized_photo_window_is_not_silently_scanned_without_photos(group_setup, monkeypatch):
+    cache, _, ask, _, bot = group_setup
+    photo_ask = AsyncMock()
+    monkeypatch.setattr(group.backend, "group_chat_photos", photo_ask)
+    bot.download = AsyncMock()
+    for mid in range(1, 8):
+        cache.remember(photo_message(mid))
+    await group.group_message(received("/scan@dayla_bot", mid=8), bot)
+    bot.download.assert_not_awaited()
+    ask.assert_not_awaited()
+    photo_ask.assert_not_awaited()
+    assert "more than 6 photos" in bot.send_message.call_args.args[1]
+
+
+def test_photo_context_is_isolated_and_keeps_reply_metadata():
+    cache = RecentMessages()
+    msg = photo_message(2)
+    msg.reply_to_message = received("встреча", mid=1)
+    cache.remember(msg)
+    context, photos = cache.snapshot(received(mid=3))
+    assert json.loads(context)[0]["reply_to_id"] == 1
+    assert photos[0]["file_id"] == "synthetic-file-2"
+    assert cache.snapshot(received(mid=3, topic=1)) == ("[]", [])
+
+
+def test_empty_context_explanation_is_localized_and_html_escaped():
+    from bot.i18n import using
+    from bot.templates import messages
+
+    with using("ru"):
+        answer = messages.group_no_context("test<bot>")
+    assert "не получить сами сообщения" in answer
+    assert "test&lt;bot&gt;" in answer and "test<bot>" not in answer

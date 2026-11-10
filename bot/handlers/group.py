@@ -2,15 +2,16 @@
 
 import logging
 import re
+from io import BytesIO
 
 from aiogram import Bot, F, Router
 from aiogram.enums import ChatType
-from aiogram.exceptions import TelegramForbiddenError
+from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest, TelegramNetworkError
 from aiogram.types import ChatMemberUpdated, Message
 
 from bot.handlers.chat import deliver
 from bot.services.backend import BackendError, backend
-from bot.services.group_context import recent
+from bot.services.group_context import recent, MAX_PHOTOS, MAX_PHOTO_BYTES
 from bot.i18n import using
 from bot.templates import messages
 
@@ -18,6 +19,13 @@ logger = logging.getLogger(__name__)
 
 router = Router(name="group")
 router.message.filter(F.chat.type.in_({ChatType.GROUP, ChatType.SUPERGROUP}))
+
+
+CHAT_SCAN = re.compile(
+    r"\bscan\b|сканир|(?:проверь|прочитай|проанализируй|найди).{0,40}(?:чат|переписк|сообщени)"
+    r"|(?:из|по)\s+(?:последн\w*\s+)?(?:чат|переписк|сообщени)",
+    re.I,
+)
 
 
 class PrivateChat:
@@ -42,7 +50,7 @@ def request_text(message: Message, username: str, replied_to_bot: bool) -> str:
     return text.strip()
 
 
-@router.message(F.text | F.caption)
+@router.message(F.text | F.caption | F.photo)
 async def group_message(message: Message, bot: Bot) -> None:
     if not message.from_user or message.from_user.is_bot or message.sender_chat:
         return
@@ -50,16 +58,16 @@ async def group_message(message: Message, bot: Bot) -> None:
     text = message.text or message.caption or ""
     replied_to_bot = bool(message.reply_to_message and message.reply_to_message.from_user and message.reply_to_message.from_user.id == me.id)
     mention = re.compile(rf"(?<![\w@])@{re.escape(me.username)}\b", re.I)
-    command = re.match(rf"^/(?:dayla|scan)@{re.escape(me.username)}\b", text, re.I)
+    command = re.match(rf"^\.?/(?P<command>dayla|scan)@{re.escape(me.username)}\b", text, re.I)
     if not replied_to_bot and not mention.search(text) and not command:
         recent.remember(message)
         return
     request = mention.sub(" ", text[command.end():] if command else text)
     request = request.strip(" ,:—-\n")
-    if not request and message.reply_to_message and not replied_to_bot:
+    if not request and ((message.reply_to_message and not replied_to_bot) or getattr(message, "photo", None)):
         request = messages.short("plan_this")
-    if not request and command and text.lower().startswith("/scan"):
-        request = "Scan the recent chat for agreed appointments and prepare calendar drafts."
+    if not request and command and command.group("command").lower() == "scan":
+        request = "Scan the recent chat, combining related messages and photos, and prepare calendar drafts for the appointments discussed."
     if not request:
         await message.reply(messages.group_help(me.username))
         return
@@ -78,19 +86,54 @@ async def group_message(message: Message, bot: Bot) -> None:
         return
     with using(profile.get("language")):
         try:
+            context, photos = recent.snapshot(message)
+            scanning = bool(command and command.group("command").lower() == "scan") or bool(CHAT_SCAN.search(request))
+            if scanning and context == "[]":
+                # A model cannot distinguish an empty buffer from missing Telegram permissions,
+                # and must not invent meetings or offer to fetch history the Bot API cannot read.
+                await bot.send_message(person, messages.group_no_context(me.username))
+                await message.reply(messages.group_sent())
+                return
             # Check private delivery before the assistant can perform any requested action.
+            if len(photos) > MAX_PHOTOS or sum(photo.get("size") or 0 for photo in photos) > MAX_PHOTO_BYTES:
+                await bot.send_message(person, messages.group_photos_too_large())
+                await message.reply(messages.group_sent())
+                return
             await bot.send_message(person, messages.group_processing())
         except TelegramForbiddenError:
             await message.reply(messages.group_not_linked(me.username))
             return
         try:
-            reply = await backend.group_chat(person, request, recent.context(message))
+            if photos:
+                files = []
+                total = 0
+                for photo in photos:
+                    with BytesIO() as buffer:
+                        await bot.download(photo["file_id"], destination=buffer)
+                        data = buffer.getvalue()
+                    total += len(data)
+                    if total > MAX_PHOTO_BYTES:
+                        await bot.send_message(person, messages.group_photos_too_large())
+                        await message.reply(messages.group_sent())
+                        return
+                    files.append((photo["filename"], data))
+                reply = await backend.group_chat_photos(person, request, context, files)
+            else:
+                reply = await backend.group_chat(person, request, context)
             await deliver(PrivateChat(bot, person), reply)
         except BackendError as error:
+            if error.status in {413, 422, 429}:
+                await bot.send_message(person, messages.answer(error.detail))
+                await message.reply(messages.group_sent())
+                return
             await message.reply(messages.group_not_linked(me.username) if error.status == 404 else messages.processing_error())
             return
         except TelegramForbiddenError:
             await message.reply(messages.group_not_linked(me.username))
+            return
+        except (TelegramBadRequest, TelegramNetworkError, TimeoutError):
+            await bot.send_message(person, messages.group_photo_failed())
+            await message.reply(messages.group_sent())
             return
         await message.reply(messages.group_sent())
 
