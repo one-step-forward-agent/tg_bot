@@ -16,6 +16,7 @@ from bot.keyboards import (
     SCOPES,
     agenda_keyboard,
     done_keyboard,
+    with_completion_report,
     move_days_keyboard,
     move_list_keyboard,
     move_options_keyboard,
@@ -132,6 +133,8 @@ async def toggle_done(callback: CallbackQuery) -> None:
         _, event_id, scope, value = callback.data.split(":")
         await backend.complete(callback.message.chat.id, int(event_id), value == "1")
         text, keyboard = await render_done(callback.message.chat.id, scope if scope in SCOPES else "today")
+        if value == "1":
+            keyboard = with_completion_report(keyboard, await site.app_url(), int(event_id))
     except ValueError:
         await callback.answer()
         return

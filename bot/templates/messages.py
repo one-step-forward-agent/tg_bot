@@ -722,15 +722,11 @@ def group_no_context(username: str) -> str:
     return tr(
         "Я получила команду, но в этой теме нет доступных мне сообщений для сканирования. "
         "Это не означает, что в переписке нет встреч: я могла не получить сами сообщения.\n\n"
-        "Назначьте бота администратором группы либо отключите Group Privacy через /setprivacy у @BotFather "
-        "и заново добавьте бота в группу. Затем отправьте новые сообщения со встречей и повторите команду. "
         "Сообщения до подключения или перезапуска я загрузить не могу.\n\n"
         f"Можно сразу ответить на конкретное сообщение со встречей командой {command}: "
         "тогда я прочитаю цитату даже без доступа к остальной переписке.",
         "I received your command, but have no available messages to scan in this topic. "
         "That does not mean there are no meetings in the conversation: I may not have received the messages.\n\n"
-        "Make the bot a group administrator, or disable Group Privacy through /setprivacy in @BotFather "
-        "and re-add the bot to the group. Then send new meeting messages and try again. "
         "I cannot fetch messages from before I joined or restarted.\n\n"
         f"You can also reply directly to the meeting message with {command}: "
         "I can read that quote even without access to the rest of the conversation.",

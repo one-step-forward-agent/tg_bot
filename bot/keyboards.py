@@ -348,6 +348,14 @@ def done_keyboard(reply: dict, scope: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def with_completion_report(keyboard: InlineKeyboardMarkup | None, app_url: str | None, event_id: int | None) -> InlineKeyboardMarkup | None:
+    if not app_url or not event_id:
+        return keyboard
+    rows = list(keyboard.inline_keyboard) if keyboard else []
+    rows.append([InlineKeyboardButton(text=tr("📝 Добавить итоги и файлы (необязательно)", "📝 Add a report and files (optional)"), url=f"{app_url.rstrip('/')}/app/events/{event_id}?report=1")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def checkin_keyboard(notification_id: int, payload: dict | None) -> InlineKeyboardMarkup:
     payload = payload or {}
     first = []

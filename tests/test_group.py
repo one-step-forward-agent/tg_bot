@@ -12,6 +12,16 @@ from bot.services.backend import BackendError
 from bot.services.group_context import RecentMessages, MAX_CONTEXT, MAX_MESSAGES
 
 from bot.handlers.group import request_text
+from bot.i18n import using
+from bot.templates.messages import group_no_context
+
+
+@pytest.mark.parametrize("language", ["ru", "en"])
+def test_missing_group_context_offers_reply_without_admin_instructions(language):
+    with using(language):
+        answer = group_no_context("dayla_bot")
+    assert "/scan@dayla_bot" in answer
+    assert all(text not in answer.lower() for text in ("botfather", "setprivacy", "group privacy", "администратором", "administrator"))
 
 
 def message(text, reply_to=None, title="Команда"):
@@ -191,7 +201,8 @@ async def test_scan_without_received_messages_explains_missing_context(group_set
     ask.assert_not_awaited()
     delivery.assert_not_awaited()
     answer = bot.send_message.call_args.args[1]
-    assert "no available messages" in answer and "/setprivacy" in answer
+    assert "no available messages" in answer
+    assert "/setprivacy" not in answer and "BotFather" not in answer and "administrator" not in answer
     assert "/scan@dayla_bot" in answer and "reply directly" in answer
     msg.reply.assert_awaited_once()
 

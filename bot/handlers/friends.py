@@ -6,7 +6,7 @@ from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, Message
 
-from bot.keyboards import FRIEND_CODES, friend_keyboard, send_draft_keyboard, team_calendar_keyboard, team_schedule_keyboard
+from bot.keyboards import FRIEND_CODES, friend_keyboard, send_draft_keyboard, team_calendar_keyboard, team_schedule_keyboard, with_completion_report
 from bot.i18n import tr
 from bot.services import site
 from bot.services.backend import BackendError, backend
@@ -16,8 +16,11 @@ router = Router()
 
 
 async def redraw(callback: CallbackQuery, card: dict) -> None:
+    keyboard = friend_keyboard(card)
+    if card.get("status") == "done":
+        keyboard = with_completion_report(keyboard, await site.app_url(), card.get("calendar_event_id"))
     try:
-        await callback.message.edit_text(messages.friend_card(card), reply_markup=friend_keyboard(card))
+        await callback.message.edit_text(messages.friend_card(card), reply_markup=keyboard)
     except TelegramBadRequest:
         pass
 

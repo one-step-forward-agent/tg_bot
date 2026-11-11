@@ -77,6 +77,10 @@ async def deliver(message: Message, reply: dict) -> None:
         await message.answer(messages.reminder_set(reply), reply_markup=with_rating(reminder_set_keyboard(reply.get("reminders") or []), rating))
     elif kind in ("friend_task", "friend_invite", "team_task"):
         await message.answer(messages.friend_card(reply), reply_markup=friend_keyboard(reply))
+    elif kind == "send_drafts":
+        await message.answer(messages.answer(reply["text"]))
+        for card in reply.get("drafts", []):
+            await deliver(message, card)
     elif kind == "send_draft":
         from bot.keyboards import send_draft_keyboard
         from bot.services.site import app_url
