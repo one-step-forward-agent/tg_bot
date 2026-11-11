@@ -197,6 +197,18 @@ async def test_draft_confirm_edit_and_gone(backend):
     assert "dr:42:e:3:title" in callback_data(markup)
 
 
+@pytest.mark.parametrize("team_task", [None, {"task_id": 5, "status": "done"}])
+async def test_calendar_report_link_is_only_for_team_tasks(backend, monkeypatch, team_task):
+    monkeypatch.setattr(agenda.site, "app_url", AsyncMock(return_value="https://example.com"))
+    backend.complete = AsyncMock(return_value=event(completed=True, team_task=team_task))
+    backend.agenda = AsyncMock(return_value={"title": "Сегодня", "days": [{"events": [event(completed=True)]}]})
+    callback = fake_callback("dt:7:today:1")
+    await agenda.toggle_done(callback)
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    urls = [button.url for row in markup.inline_keyboard for button in row if button.url]
+    assert bool(urls) == bool(team_task)
+
+
 async def test_toggle_done_and_checkin(backend):
     reply = {"title": "Сегодня", "days": [{"events": [event(completed=True)]}]}
     backend.complete = AsyncMock(return_value=event(completed=True))

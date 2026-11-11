@@ -17,7 +17,7 @@ router = Router()
 
 async def redraw(callback: CallbackQuery, card: dict) -> None:
     keyboard = friend_keyboard(card)
-    if card.get("status") == "done":
+    if card.get("kind") == "team_task" and card.get("status") == "done":
         keyboard = with_completion_report(keyboard, await site.app_url(), card.get("calendar_event_id"))
     try:
         await callback.message.edit_text(messages.friend_card(card), reply_markup=keyboard)

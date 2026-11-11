@@ -53,6 +53,18 @@ def callback(data: str) -> CallbackQuery:
     return query
 
 
+@pytest.mark.parametrize("kind,expected", [("friend_task", False), ("team_task", True)])
+async def test_only_completed_team_cards_offer_a_report(monkeypatch, kind, expected):
+    monkeypatch.setattr(friends.site, "app_url", AsyncMock(return_value="https://example.com"))
+    query = callback("tt:7:d" if kind == "team_task" else "ft:7:d")
+    await friends.redraw(query, {**REQUEST, "kind": kind, "status": "done", "actions": [], "calendar_event_id": 42})
+    markup = query.message.edit_text.await_args.kwargs["reply_markup"]
+    urls = [button.url for row in (markup.inline_keyboard if markup else []) for button in row if button.url]
+    assert bool(urls) == expected
+    if expected:
+        assert urls == ["https://example.com/app/events/42?report=1"]
+
+
 async def test_a_button_redraws_the_card(monkeypatch):
     answered = {**REQUEST, "actions": [], "text": "**Купить хлеб**\n_Вы приняли — задача в календаре_"}
     call = AsyncMock(return_value=answered)
